@@ -1,18 +1,18 @@
 from config.database import Base
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import relationship
+import uuid
 
 class Employees(Base):
 
     __tablename__ = "employees"
 
-    employee_id = Column(Integer, primary_key=True)
-    employee_name = Column(String, unique=True, nullable=False)
-    employee_email = Column(String, unique=True, nullable=False)
-    area= Column(String, nullable=False)
-    contractor = Column(Boolean, nullable=False)
-    country = Column(Integer, nullable=False)
+    id_employee = Column(Integer, primary_key=True, default=lambda: int(uuid.uuid4()))
+    employee_name = Column(String, nullable=False)
+    employee_email = Column(String, nullable=False, unique=True)
+    home_state = Column(String, nullable=True)
+    home_country = Column(String, nullable=True)
+
+    assigned_projects = relationship("AssignedProject", back_populates="assigned_projects")
 
     #Pendiente revisar como podemos obtener los datos de latitud y longitud del API de Google maps para geolocalización
-
-    orders = relationship("Order", back_populates="user")
