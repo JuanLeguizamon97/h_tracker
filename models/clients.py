@@ -7,8 +7,8 @@ class Client(Base):
 
     __tablename__ = "clients"
 
-    primary_id_client = Column(Integer, primary_key=True, default=lambda: int(uuid.uuid4())) #entidad
-    second_id_client = Column(Integer, primary_key=True, default=lambda: int(uuid.uuid4())) #grupo
+    primary_id_client = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) #entidad
+    second_id_client = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) #grupo
     client_name = Column(String, nullable=False)
     contact_name = Column(String, nullable=True)
     contact_title = Column(String, nullable=True)
