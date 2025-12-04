@@ -7,7 +7,7 @@ class AssignedProject(Base):
 
     __tablename__ = "assigned_projects"
 
-    id = Column(Integer, nullable=False, primary_key=True, default=lambda: int(uuid.uuid4()))
+    id = Column(String, nullable=False, primary_key=True, default=lambda: str(uuid.uuid4()))
     employee_id = Column(Integer, ForeignKey("employees.id_employee"), nullable=False)
     project_id = Column(Integer, ForeignKey("projects.id_project"), nullable=False)
     client_id = Column(Integer, ForeignKey("clients.id_client"), nullable=False)
