@@ -16,4 +16,3 @@ class Week(Base):
     qty_days_a = Column(Integer, nullable=True)
     qty_days_b = Column(Integer, nullable=True)
 
-    time_entries = relationship("TimeEntry", back_populates="time_entries")

@@ -22,7 +22,7 @@ class TimeEntry(Base):
     month_b_hours = Column(Numeric(6, 2), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    employee = relationship("Employee", back_populates="employees")
-    project = relationship("Project", back_populates="projects")
-    client = relationship("Client", back_populates="clients")
-    week = relationship("Week", back_populates="weeks")
+    employee = relationship("Employees", back_populates="time_entries")
+    project = relationship("Project", back_populates="time_entries")
+    client = relationship("Client", back_populates="time_entries")
+    week = relationship("Week", back_populates="time_entries")
