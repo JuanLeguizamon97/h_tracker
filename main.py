@@ -9,6 +9,7 @@ from routers.time_entries import time_entries_router
 from routers.weeks import weeks_router
 from routers.invoice import invoice_router
 from routers.invoice_lines import invoice_lines_router
+from routers.auth import auth_router
 
 app = FastAPI()
 app.title = "Impact Point Hours Tracker"
@@ -23,6 +24,7 @@ app.include_router(time_entries_router)
 app.include_router(weeks_router)
 app.include_router(invoice_router)
 app.include_router(invoice_lines_router)
+auth_router.include_router(auth_router)
 
 
 Base.metadata.create_all(bind=engine)

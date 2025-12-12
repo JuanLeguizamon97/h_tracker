@@ -1,4 +1,4 @@
-from utils.jwt_manager import create_token, validate_token
+from utils.security import create_token, validate_token
 from fastapi.security import HTTPBearer
 from fastapi import HTTPException, Request
 from typing import Optional
