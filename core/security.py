@@ -1,16 +1,50 @@
-from typing import Iterable
-from fastapi import Depends
-from fastapi_azure_auth.exceptions import Unauthorized
-from fastapi_azure_auth.user import User
-from core.auth import azure_scheme
+# core/security.py
+from datetime import datetime, timedelta
 
-def require_roles(allowed: Iterable[str]):
-    allowed_set = set(allowed)
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
 
-    async def _dep(user: User = Depends(azure_scheme)) -> User:
-        # user.roles viene del token; doc muestra validación tipo 'AdminUser' in user.roles
-        if not allowed_set.intersection(set(user.roles or [])):
-            raise Unauthorized(f"Missing required role. Need one of: {sorted(allowed_set)}")
-        return user
+from core.settings import settings
 
-    return _dep
+bearer_scheme = HTTPBearer()
+
+
+def create_access_token(subject: str, extra_claims: dict | None = None) -> str:
+    data = {"sub": subject}
+    if extra_claims:
+        data.update(extra_claims)
+
+    expire = datetime.utcnow() + timedelta(hours=settings.JWT_EXPIRES_HOURS)
+    data["exp"] = expire
+
+    encoded = jwt.encode(
+        data,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    return encoded
+
+
+def decode_access_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        return payload
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado",
+        )
+
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> dict:
+    token = creds.credentials
+    payload = decode_access_token(token)
+    return payload
+
