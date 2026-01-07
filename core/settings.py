@@ -21,10 +21,22 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+<<<<<<< HEAD
+    # Microsoft OAuth (obligatorias)
+    MICROSOFT_TENANT_ID: str
+    MICROSOFT_CLIENT_ID: str
+    MICROSOFT_CLIENT_SECRET: str
+    # Session & JWT
+    SESSION_SECRET_KEY: str
+    JWT_SECRET_KEY: str
+    JWT_EXPIRES_HOURS: int = 2
+    JWT_ALGORITHM: str = "HS256"
+=======
     # Azure Entra ID (obligatorias)
     TENANT_ID: str
     APP_CLIENT_ID: str
     OPENAPI_CLIENT_ID: str | None = None
+>>>>>>> upstream/master
 
     BACKEND_CORS_ORIGINS: list[str | AnyHttpUrl] = [
         "http://localhost:3000",

@@ -18,42 +18,39 @@ from routers.time_entries import time_entries_router
 from routers.weeks import weeks_router
 from routers.invoice import invoice_router
 from routers.invoice_lines import invoice_lines_router
-from routers.auth import auth_router  # (puedes eliminarlo después si ya no lo usas)
+from routers.auth import auth_router
+from starlette.middleware.sessions import SessionMiddleware
+from core.settings import settings
+import logging
+from fastapi.middleware.cors import CORSMiddleware
 
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Carga la configuración OpenID (issuer, jwks, endpoints) de Entra ID al arrancar.
-    Si falla, es mejor fallar temprano para detectar mala config de tenant/client/scopes.
-    """
-    await azure_scheme.openid_config.load_config()
-    yield
+app = FastAPI()
+app.title = "Impact Point Hours Tracker"
+app.version = "0.0.1"
 
-
-# ---------- Swagger + OAuth (Azure Entra ID) ----------
-extra_kwargs: dict = {}
-
-# Solo configuramos OAuth en Swagger si hay OPENAPI_CLIENT_ID
-if getattr(settings, "OPENAPI_CLIENT_ID", None):
-    extra_kwargs["swagger_ui_oauth2_redirect_url"] = "/oauth2-redirect"
-    extra_kwargs["swagger_ui_init_oauth"] = {
-        "usePkceWithAuthorizationCodeGrant": True,
-        "clientId": settings.OPENAPI_CLIENT_ID,
-        # 👇 IMPORTANTE: indica el scope del API para que Swagger lo solicite
-        # Debe ser algo como: "api://<APP_CLIENT_ID>/user_impersonation"
-        "scopes": getattr(settings, "AZURE_API_SCOPE", ""),
-    }
-
-# ---------- Crear la app ----------
-app = FastAPI(
-    title="Impact Point Hours Tracker",
-    version="0.0.1",
-    lifespan=lifespan,
-    **extra_kwargs,
+# CORS debe ir primero
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Middleware de errores
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="proyecto-tracker-secreto-2026",
+    same_site="lax",
+    https_only=False,
+)
+
 app.add_middleware(ErrorHandler)
 
 # CORS leyendo de settings
@@ -74,6 +71,7 @@ app.include_router(time_entries_router)
 app.include_router(weeks_router)
 app.include_router(invoice_router)
 app.include_router(invoice_lines_router)
+app.include_router(auth_router)
 app.include_router(auth_router)
 
 # ---------- Crear tablas ----------
