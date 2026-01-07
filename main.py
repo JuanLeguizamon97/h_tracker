@@ -1,6 +1,15 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from config.database import engine, Base
 from middlewares.error_handler import ErrorHandler
+from core.settings import settings  # tu Settings actual
+
+# 👇 NUEVO: esquema Azure (fastapi-azure-auth)
+from auth.azure import azure_scheme
+
 from routers.assigned_projects import aprojects_router
 from routers.clients import clients_router
 from routers.employees import employees_router
@@ -43,6 +52,17 @@ app.add_middleware(
 )
 
 app.add_middleware(ErrorHandler)
+
+# CORS leyendo de settings
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[str(o) for o in settings.BACKEND_CORS_ORIGINS],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------- Routers ----------
 app.include_router(aprojects_router)
 app.include_router(clients_router)
 app.include_router(employees_router)
@@ -52,6 +72,7 @@ app.include_router(weeks_router)
 app.include_router(invoice_router)
 app.include_router(invoice_lines_router)
 app.include_router(auth_router)
+app.include_router(auth_router)
 
-
+# ---------- Crear tablas ----------
 Base.metadata.create_all(bind=engine)

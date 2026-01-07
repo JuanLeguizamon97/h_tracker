@@ -2,8 +2,12 @@
 from fastapi import APIRouter, HTTPException
 from fastapi import Request
 from auth.microsoft_oauth import oauth
+<<<<<<< HEAD
 #from utils.security import create_access_token
 from core.security import create_access_token
+=======
+from utils.security import create_access_token
+>>>>>>> upstream/master
 
 auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
