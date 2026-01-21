@@ -1,14 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Security
 from fastapi.middleware.cors import CORSMiddleware
 
-from config.database import engine, Base
-from middlewares.error_handler import ErrorHandler
-from core.settings import settings  # tu Settings actual
+from utils.auth_microsoft import azure_scheme
 
-# 👇 NUEVO: esquema Azure (fastapi-azure-auth)
-from auth.azure import azure_scheme
+from config.database import engine, Base
+
 
 from routers.assigned_projects import aprojects_router
 from routers.clients import clients_router
@@ -18,11 +16,9 @@ from routers.time_entries import time_entries_router
 from routers.weeks import weeks_router
 from routers.invoice import invoice_router
 from routers.invoice_lines import invoice_lines_router
-from routers.auth import auth_router
 from starlette.middleware.sessions import SessionMiddleware
-from core.settings import settings
 import logging
-from fastapi.middleware.cors import CORSMiddleware
+
 
 # Configurar logging
 logging.basicConfig(
@@ -31,48 +27,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app = FastAPI(
+    swagger_ui_oauth2_redirect_url="/docs/oauth2-redirect",
+    swagger_ui_init_oauth={
+        "usePkceWithAuthorizationCodeGrant": True,
+        "clientId": "b44bcf9e-cc38-4542-82b9-e9447a45a7ec",
+        "scopes": ["api://6cda0fcc-09b3-4173-b6cc-07df8bf2b82b/user_impersonation"],
+    },
+)
 app.title = "Impact Point Hours Tracker"
 app.version = "0.0.1"
 
 # CORS debe ir primero
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.add_middleware(
-    SessionMiddleware,
-    secret_key="proyecto-tracker-secreto-2026",
-    same_site="lax",
-    https_only=False,
-)
-
-app.add_middleware(ErrorHandler)
-
-# CORS leyendo de settings
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[str(o) for o in settings.BACKEND_CORS_ORIGINS],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # ---------- Routers ----------
-app.include_router(aprojects_router)
-app.include_router(clients_router)
-app.include_router(employees_router)
-app.include_router(projects_router)
-app.include_router(time_entries_router)
-app.include_router(weeks_router)
-app.include_router(invoice_router)
-app.include_router(invoice_lines_router)
-app.include_router(auth_router)
-app.include_router(auth_router)
+app.include_router(aprojects_router, dependencies=[Security(azure_scheme)])
+app.include_router(clients_router, dependencies=[Security(azure_scheme)])
+app.include_router(employees_router, dependencies=[Security(azure_scheme)])
+app.include_router(projects_router, dependencies=[Security(azure_scheme)])
+app.include_router(time_entries_router, dependencies=[Security(azure_scheme)])
+app.include_router(weeks_router, dependencies=[Security(azure_scheme)])
+app.include_router(invoice_router, dependencies=[Security(azure_scheme)])
+app.include_router(invoice_lines_router, dependencies=[Security(azure_scheme)])
+
 
 # ---------- Crear tablas ----------
 Base.metadata.create_all(bind=engine)

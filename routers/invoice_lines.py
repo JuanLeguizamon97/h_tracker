@@ -3,7 +3,6 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from config.database import db_session
-from middlewares.jwt_bearer import JWTBearer
 
 from services.invoice_lines import (
     create_invoice_line,
@@ -18,7 +17,6 @@ from schemas.invoice_lines import InvoiceLineCreate, InvoiceLineUpdate, InvoiceL
 invoice_lines_router = APIRouter(
     prefix="/invoice-lines",
     tags=["invoice_lines"],
-    dependencies=[Depends(JWTBearer())],
 )
 
 

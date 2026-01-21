@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from config.database import db_session
-from middlewares.jwt_bearer import JWTBearer
 
 from services.time_entries import (
     create_time_entry,
@@ -20,8 +19,7 @@ from schemas.time_entries import TimeEntryCreate, TimeEntryUpdate, TimeEntryOut
 
 time_entries_router = APIRouter(
     prefix="/time-entries",
-    tags=["time_entries"],
-    dependencies=[Depends(JWTBearer())],  # protege todos los endpoints
+    tags=["time_entries"],  # protege todos los endpoints
 )
 
 

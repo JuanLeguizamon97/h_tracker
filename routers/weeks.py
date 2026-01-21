@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from config.database import db_session
-from middlewares.jwt_bearer import JWTBearer
 
 from services.weeks import (
     create_week,
@@ -20,8 +19,7 @@ from schemas.weeks import WeekCreate, WeekUpdate, WeekOut
 
 weeks_router = APIRouter(
     prefix="/weeks",
-    tags=["weeks"],
-    dependencies=[Depends(JWTBearer())],  # protege todos los endpoints
+    tags=["weeks"],  # protege todos los endpoints
 )
 
 

@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from config.database import db_session
-from middlewares.jwt_bearer import JWTBearer
 
 from services.employees import (
     create_employee,
@@ -19,8 +18,7 @@ from schemas.employees import EmployeeCreate, EmployeeUpdate, EmployeeOut
 
 employees_router = APIRouter(
     prefix="/employees",
-    tags=["employees"],
-    dependencies=[Depends(JWTBearer())],  # protege todos los endpoints con JWT
+    tags=["employees"], # protege todos los endpoints con JWT
 )
 
 

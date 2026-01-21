@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from config.database import db_session
-from middlewares.jwt_bearer import JWTBearer
 from services.assigned_projects import (
     get_assigned_projects,
     create_assigned_project,
@@ -17,8 +16,7 @@ from schemas.assigned_projects import (
 
 aprojects_router = APIRouter(
     prefix="/projects",
-    tags=["projects"],
-    dependencies=[Depends(JWTBearer())],  # protege todos los endpoints
+    tags=["projects"],  # protege todos los endpoints
 )
 
 

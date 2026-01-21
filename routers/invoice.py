@@ -4,7 +4,6 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from config.database import db_session
-from middlewares.jwt_bearer import JWTBearer
 
 from services.invoice import (
     create_invoice,
@@ -19,7 +18,6 @@ from schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceOut
 invoice_router = APIRouter(
     prefix="/invoice",
     tags=["invoice"],
-    dependencies=[Depends(JWTBearer())],
 )
 
 

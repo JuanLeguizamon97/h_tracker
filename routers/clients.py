@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from config.database import db_session
-from middlewares.jwt_bearer import JWTBearer
 from services.clients import (
     create_client,
     get_clients,
@@ -18,8 +17,7 @@ from schemas.clients import ClientCreate, ClientUpdate, ClientOut
 
 clients_router = APIRouter(
     prefix="/clients",
-    tags=["clients"],
-    dependencies=[Depends(JWTBearer())],  # Protege todos los endpoints con JWT
+    tags=["clients"],  # Protege todos los endpoints con JWT
 )
 
 

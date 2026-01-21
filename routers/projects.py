@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from config.database import db_session
-from middlewares.jwt_bearer import JWTBearer
+
 
 from services.projects import (
     create_project,
@@ -19,8 +19,7 @@ from schemas.projects import ProjectCreate, ProjectUpdate, ProjectOut
 
 projects_router = APIRouter(
     prefix="/projects",
-    tags=["projects"],
-    dependencies=[Depends(JWTBearer())],  # protege todos los endpoints
+    tags=["projects"],  # protege todos los endpoints
 )
 
 
