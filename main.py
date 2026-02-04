@@ -16,7 +16,6 @@ from routers.time_entries import time_entries_router
 from routers.weeks import weeks_router
 from routers.invoice import invoice_router
 from routers.invoice_lines import invoice_lines_router
-from starlette.middleware.sessions import SessionMiddleware
 import logging
 
 
