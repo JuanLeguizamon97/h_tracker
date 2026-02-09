@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(del \"c:\\\\Users\\\\JuanLeguizamon\\\\Documents\\\\H_Tracker\\\\Backend\\\\config\\\\config.py\")",
+      "Bash(del \"c:\\\\Users\\\\JuanLeguizamon\\\\Documents\\\\H_Tracker\\\\Backend\\\\config\\\\db.py\")",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)"
+    ]
+  }
+}
