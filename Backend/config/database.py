@@ -2,16 +2,12 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-sqlite_file_name = "../database.sqlite"
-base_dir = os.path.dirname(os.path.realpath(__file__))
-
-database_url = f"sqlite:///{os.path.join(base_dir, sqlite_file_name)}"
-
-engine = create_engine(
-    database_url,
-    echo=True,
-    connect_args={"check_same_thread": False},
+database_url = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@localhost:5432/h_tracker",
 )
+
+engine = create_engine(database_url, echo=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
