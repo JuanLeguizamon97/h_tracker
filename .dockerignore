@@ -1,0 +1,10 @@
+hours-tracker-frontend/node_modules
+hours-tracker-frontend/dist
+__pycache__
+*.pyc
+.git
+*.sqlite
+database.sqlite
+.env
+venv
+.venv

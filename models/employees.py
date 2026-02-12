@@ -13,6 +13,7 @@ class Employees(Base):
     home_state = Column(String, nullable=True)
     home_country = Column(String, nullable=True)
 
-    employee = relationship("Employees", back_populates="assigned_projects")
+    assigned_projects = relationship("AssignedProject", back_populates="employee")
+    time_entries = relationship("TimeEntry", back_populates="employee")
 
     #Pendiente revisar como podemos obtener los datos de latitud y longitud del API de Google maps para geolocalización

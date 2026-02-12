@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hours_user
+      POSTGRES_PASSWORD: hours_pass
+      POSTGRES_DB: hours_tracker
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hours_user -d hours_tracker"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://hours_user:hours_pass@postgres:5432/hours_tracker
+      AUTH_MODE: ${AUTH_MODE:-azure}
+      ENV: ${ENV:-dev}
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:3001"
+      AZURE_APP_CLIENT_ID: ${AZURE_APP_CLIENT_ID:-6cda0fcc-09b3-4173-b6cc-07df8bf2b82b}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-9a347a67-e3c3-4de7-9c88-449af6f6c092}
+      AZURE_API_SCOPE: ${AZURE_API_SCOPE:-api://6cda0fcc-09b3-4173-b6cc-07df8bf2b82b/user_impersonation}
+      SQL_ECHO: "false"
+
+  frontend:
+    build:
+      context: ./hours-tracker-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_AZURE_CLIENT_ID: ${VITE_AZURE_CLIENT_ID:-b44bcf9e-cc38-4542-82b9-e9447a45a7ec}
+        VITE_AZURE_TENANT_ID: ${VITE_AZURE_TENANT_ID:-9a347a67-e3c3-4de7-9c88-449af6f6c092}
+        VITE_AZURE_REDIRECT_URI: ${VITE_AZURE_REDIRECT_URI:-http://localhost:3000}
+        VITE_AZURE_API_SCOPE: ${VITE_AZURE_API_SCOPE:-api://6cda0fcc-09b3-4173-b6cc-07df8bf2b82b/user_impersonation}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8001}
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

@@ -13,6 +13,6 @@ class AssignedProject(Base):
     client_id = Column(String, ForeignKey("clients.second_id_client"), nullable=False)
     active = Column(Boolean, nullable=False, default=True)
 
-    employee = relationship("Employee", back_populates="assigned_projects")
-    project = relationship("Project", back_populates="assigned_projects")
+    employee = relationship("Employees", back_populates="assigned_projects")
+    project = relationship("Project", back_populates="assigned_employees")
     client = relationship("Client", back_populates="assigned_projects")

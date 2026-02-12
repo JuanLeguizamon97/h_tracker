@@ -25,5 +25,6 @@ class Client(Base):
 
     # Relaciones: deben coincidir con lo que pusimos en Project y TimeEntry
     projects = relationship("Project", back_populates="client")
+    assigned_projects = relationship("AssignedProject", back_populates="client")
     time_entries = relationship("TimeEntry", back_populates="client")
     invoices = relationship("Invoice", back_populates="client")
