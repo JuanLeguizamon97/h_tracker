@@ -1,12 +1,11 @@
 # routers/employees.py
+import os
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from fastapi_azure_auth.user import User
 
 from config.database import get_db
-from utils.auth_microsoft import azure_scheme
 
 from services.employees import (
     create_employee,
@@ -18,11 +17,17 @@ from services.employees import (
 )
 from schemas.employees import EmployeeCreate, EmployeeUpdate, EmployeeOut
 
+AUTH_MODE = os.getenv("AUTH_MODE", "azure")
 
 employees_router = APIRouter(
     prefix="/employees",
     tags=["employees"],
 )
+
+_MOCK_EMPLOYEE = {
+    "email": "dev@impactpoint.dev",
+    "name": "Dev Admin",
+}
 
 
 @employees_router.get(
@@ -31,13 +36,20 @@ employees_router = APIRouter(
     status_code=status.HTTP_200_OK,
 )
 async def get_current_employee(
-    user: User = Depends(azure_scheme),
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    email = user.claims.get("preferred_username") or user.claims.get("email", "")
-    name = user.claims.get("name", email.split("@")[0])
+    if AUTH_MODE == "mock":
+        email = request.headers.get("X-Dev-User-Email", _MOCK_EMPLOYEE["email"])
+        name = request.headers.get("X-Dev-User-Name", _MOCK_EMPLOYEE["name"])
+    else:
+        from utils.auth_microsoft import azure_scheme
+        user = await azure_scheme(request)
+        email = user.claims.get("preferred_username") or user.claims.get("email", "")
+        name = user.claims.get("name", email.split("@")[0])
 
-    employee = get_or_create_employee_by_email(db, email=email, name=name)
+    role = "admin" if AUTH_MODE == "mock" else "employee"
+    employee = get_or_create_employee_by_email(db, email=email, name=name, role=role)
     return employee
 
 

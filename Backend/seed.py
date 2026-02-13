@@ -27,15 +27,23 @@ def uid() -> str:
     return str(uuid.uuid4())
 
 
+def _exists(db, model, **kwargs):
+    return db.query(model).filter_by(**kwargs).first() is not None
+
+
 def seed():
-    # ---- Create all tables ----
-    Base.metadata.drop_all(bind=engine)
+    # Ensure tables exist (idempotent, does not drop existing data)
     Base.metadata.create_all(bind=engine)
-    print("Tables created.")
+    print("Tables verified.")
 
     db = SessionLocal()
 
     try:
+        # Skip if data already exists (idempotent)
+        if db.query(Employees).first() is not None:
+            print("[seed] Data already exists, skipping.")
+            return
+
         # ============================================================
         # EMPLOYEES
         # ============================================================

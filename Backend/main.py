@@ -54,7 +54,7 @@ app.title = "Impact Point Hours Tracker"
 app.version = "0.0.1"
 
 # CORS
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8080").split(",")
 
 app.add_middleware(
     CORSMiddleware,

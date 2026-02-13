@@ -14,5 +14,5 @@ class AssignedProject(Base):
     active = Column(Boolean, nullable=False, default=True)
 
     employee = relationship("Employees", back_populates="assigned_projects")
-    project = relationship("Project", back_populates="assigned_employees")
+    project = relationship("Project", back_populates="assigned_projects")
     client = relationship("Client", back_populates="assigned_projects")

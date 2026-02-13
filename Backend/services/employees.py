@@ -56,6 +56,7 @@ def get_or_create_employee_by_email(
     db: Session,
     email: str,
     name: str,
+    role: str = "employee",
 ) -> Employees:
     employee = get_employee_by_email(db, email)
     if employee:
@@ -64,7 +65,7 @@ def get_or_create_employee_by_email(
     db_employee = Employees(
         employee_name=name,
         employee_email=email,
-        role="employee",
+        role=role,
     )
     db.add(db_employee)
     db.commit()

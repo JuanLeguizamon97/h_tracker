@@ -1,13 +1,16 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from dotenv import load_dotenv
 
-database_url = os.getenv(
+load_dotenv()
+
+DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/h_tracker",
+    "postgresql://hours_user:hours_pass@localhost:5432/hours_tracker",
 )
 
-engine = create_engine(database_url, echo=True)
+engine = create_engine(DATABASE_URL, echo=os.getenv("SQL_ECHO", "false").lower() == "true")
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

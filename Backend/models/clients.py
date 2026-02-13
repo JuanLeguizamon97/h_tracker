@@ -1,11 +1,14 @@
 from config.database import Base
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 import uuid
 
 class Client(Base):
 
     __tablename__ = "clients"
+    __table_args__ = (
+        UniqueConstraint("second_id_client", name="uq_clients_second_id"),
+    )
 
     # Claves de negocio (entidad / grupo), ya NO como PK
     primary_id_client = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) #entidad
@@ -28,4 +31,3 @@ class Client(Base):
     assigned_projects = relationship("AssignedProject", back_populates="client")
     time_entries = relationship("TimeEntry", back_populates="client")
     invoices = relationship("Invoice", back_populates="client")
-    assigned_projects = relationship("AssignedProject", back_populates="client")

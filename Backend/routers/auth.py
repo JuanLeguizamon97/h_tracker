@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, Security, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from config.database import db_session
+from config.database import get_db
 from services.user_provisioning import upsert_app_user
 from schemas.app_user import AppUserOut
 
@@ -23,7 +23,6 @@ _MOCK_USER = {
 
 def _extract_claims_from_token(token) -> dict:
     """Extract user claims from a validated fastapi-azure-auth token."""
-    # fastapi-azure-auth returns a TokenPayload with .claims dict
     claims = getattr(token, "claims", {})
     oid = claims.get("oid") or claims.get("sub") or ""
     email = (
@@ -42,7 +41,7 @@ if AUTH_MODE == "mock" and os.getenv("ENV", "dev") != "prod":
     @auth_router.get("/me", response_model=AppUserOut)
     def get_current_user_mock(
         request: Request,
-        db: Session = Depends(db_session),
+        db: Session = Depends(get_db),
     ):
         dev_oid = request.headers.get("X-Dev-User-Oid", _MOCK_USER["oid"])
         dev_email = request.headers.get("X-Dev-User-Email", _MOCK_USER["email"])
@@ -55,7 +54,7 @@ else:
 
     @auth_router.get("/me", response_model=AppUserOut)
     def get_current_user(
-        db: Session = Depends(db_session),
+        db: Session = Depends(get_db),
         token=Security(azure_scheme),
     ):
         claims = _extract_claims_from_token(token)

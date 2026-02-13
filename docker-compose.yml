@@ -18,8 +18,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: backend.Dockerfile
+      context: ./Backend
+      dockerfile: ../backend.Dockerfile
     restart: unless-stopped
     ports:
       - "8001:8000"
@@ -28,9 +28,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://hours_user:hours_pass@postgres:5432/hours_tracker
-      AUTH_MODE: ${AUTH_MODE:-azure}
+      AUTH_MODE: mock
       ENV: ${ENV:-dev}
-      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:3001"
+      CORS_ORIGINS: "http://localhost:8080,http://localhost:3000"
       AZURE_APP_CLIENT_ID: ${AZURE_APP_CLIENT_ID:-6cda0fcc-09b3-4173-b6cc-07df8bf2b82b}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-9a347a67-e3c3-4de7-9c88-449af6f6c092}
       AZURE_API_SCOPE: ${AZURE_API_SCOPE:-api://6cda0fcc-09b3-4173-b6cc-07df8bf2b82b/user_impersonation}
@@ -38,17 +38,11 @@ services:
 
   frontend:
     build:
-      context: ./hours-tracker-frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_AZURE_CLIENT_ID: ${VITE_AZURE_CLIENT_ID:-b44bcf9e-cc38-4542-82b9-e9447a45a7ec}
-        VITE_AZURE_TENANT_ID: ${VITE_AZURE_TENANT_ID:-9a347a67-e3c3-4de7-9c88-449af6f6c092}
-        VITE_AZURE_REDIRECT_URI: ${VITE_AZURE_REDIRECT_URI:-http://localhost:3000}
-        VITE_AZURE_API_SCOPE: ${VITE_AZURE_API_SCOPE:-api://6cda0fcc-09b3-4173-b6cc-07df8bf2b82b/user_impersonation}
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8001}
+      context: .
+      dockerfile: frontend.Dockerfile
     restart: unless-stopped
     ports:
-      - "3001:80"
+      - "3000:80"
     depends_on:
       - backend
 
