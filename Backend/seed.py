@@ -1,454 +1,262 @@
 """
 Seed script: creates tables and loads dummy data into PostgreSQL.
-
-Usage:
-    cd Backend
-    python seed.py
 """
-
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 
 from config.database import engine, Base, SessionLocal
 
-# Import ALL models so SQLAlchemy registers them on Base.metadata
-from models.employees import Employees
+import models  # imports all via __init__
+from models.employees import Employee
 from models.clients import Client
 from models.projects import Project
-from models.weeks import Week
+from models.project_roles import ProjectRole
+from models.user_roles import UserRole
+from models.employee_projects import EmployeeProject
 from models.time_entries import TimeEntry
-from models.assigned_projects import AssignedProject
 from models.invoice import Invoice
 from models.invoice_lines import InvoiceLine
+from models.invoice_manual_lines import InvoiceManualLine
+from models.invoice_fees import InvoiceFee
+from models.invoice_time_entries import InvoiceTimeEntry
 
 
-def uid() -> str:
+def uid():
     return str(uuid.uuid4())
 
 
-def _exists(db, model, **kwargs):
-    return db.query(model).filter_by(**kwargs).first() is not None
-
-
 def seed():
-    # Ensure tables exist (idempotent, does not drop existing data)
     Base.metadata.create_all(bind=engine)
     print("Tables verified.")
 
     db = SessionLocal()
 
     try:
-        # Skip if data already exists (idempotent)
-        if db.query(Employees).first() is not None:
+        if db.query(Employee).first() is not None:
             print("[seed] Data already exists, skipping.")
             return
 
-        # ============================================================
         # EMPLOYEES
-        # ============================================================
-        emp_admin = Employees(
-            id_employee=uid(),
-            employee_name="Juan Leguizamón",
-            employee_email="juan@impactpoint.com",
-            home_state="Florida",
-            home_country="US",
-            role="admin",
-            hourly_rate=Decimal("75.00"),
-        )
-        emp_laura = Employees(
-            id_employee=uid(),
-            employee_name="Laura García",
-            employee_email="laura@impactpoint.com",
-            home_state="Texas",
-            home_country="US",
-            role="employee",
-            hourly_rate=Decimal("55.00"),
-        )
-        emp_carlos = Employees(
-            id_employee=uid(),
-            employee_name="Carlos Rodríguez",
-            employee_email="carlos@impactpoint.com",
-            home_state="California",
-            home_country="US",
-            role="employee",
-            hourly_rate=Decimal("60.00"),
-        )
-        emp_maria = Employees(
-            id_employee=uid(),
-            employee_name="María Fernández",
-            employee_email="maria@impactpoint.com",
-            home_state="New York",
-            home_country="US",
-            role="employee",
-            hourly_rate=Decimal("50.00"),
-        )
-        emp_diego = Employees(
-            id_employee=uid(),
-            employee_name="Diego López",
-            employee_email="diego@impactpoint.com",
-            home_state="Illinois",
-            home_country="US",
-            role="admin",
-            hourly_rate=Decimal("70.00"),
-        )
-
+        emp_admin = Employee(id=uid(), user_id="admin-001", name="Juan Leguizamon", email="juan@impactpoint.com", hourly_rate=Decimal("75.00"), is_active=True)
+        emp_laura = Employee(id=uid(), user_id=uid(), name="Laura Garcia", email="laura@impactpoint.com", hourly_rate=Decimal("55.00"), is_active=True)
+        emp_carlos = Employee(id=uid(), user_id=uid(), name="Carlos Rodriguez", email="carlos@impactpoint.com", hourly_rate=Decimal("60.00"), is_active=True)
+        emp_maria = Employee(id=uid(), user_id=uid(), name="Maria Fernandez", email="maria@impactpoint.com", hourly_rate=Decimal("50.00"), is_active=True)
+        emp_diego = Employee(id=uid(), user_id=uid(), name="Diego Lopez", email="diego@impactpoint.com", hourly_rate=Decimal("70.00"), is_active=True)
         employees = [emp_admin, emp_laura, emp_carlos, emp_maria, emp_diego]
         db.add_all(employees)
         db.flush()
         print(f"  {len(employees)} employees inserted.")
 
-        # ============================================================
-        # CLIENTS
-        # ============================================================
-        cl_acme = Client(
-            primary_id_client=uid(),
-            second_id_client=uid(),
-            client_name="Acme Corporation",
-            contact_name="John Smith",
-            contact_title="CTO",
-            contact_email="jsmith@acme.com",
-            contact_phone="+1 305 555 0100",
-            billing_address_line1="123 Main St",
-            billing_city="Miami",
-            billing_state="FL",
-            billing_postal_code=33101,
-            billing_country="US",
-            active=True,
-        )
-        cl_globex = Client(
-            primary_id_client=uid(),
-            second_id_client=uid(),
-            client_name="Globex Industries",
-            contact_name="Sarah Connor",
-            contact_title="VP Engineering",
-            contact_email="sconnor@globex.com",
-            contact_phone="+1 212 555 0200",
-            billing_address_line1="456 Park Ave",
-            billing_city="New York",
-            billing_state="NY",
-            billing_postal_code=10022,
-            billing_country="US",
-            active=True,
-        )
-        cl_initech = Client(
-            primary_id_client=uid(),
-            second_id_client=uid(),
-            client_name="Initech Solutions",
-            contact_name="Bill Lumbergh",
-            contact_title="Director",
-            contact_email="bill@initech.com",
-            contact_phone="+1 415 555 0300",
-            billing_address_line1="789 Market St",
-            billing_city="San Francisco",
-            billing_state="CA",
-            billing_postal_code=94105,
-            billing_country="US",
-            active=True,
-        )
-        cl_wayne = Client(
-            primary_id_client=uid(),
-            second_id_client=uid(),
-            client_name="Wayne Enterprises",
-            contact_name="Lucius Fox",
-            contact_title="CEO",
-            contact_email="lfox@wayne.com",
-            contact_phone="+1 312 555 0400",
-            billing_address_line1="1007 Wayne Tower",
-            billing_city="Chicago",
-            billing_state="IL",
-            billing_postal_code=60601,
-            billing_country="US",
-            active=True,
-        )
-        cl_inactive = Client(
-            primary_id_client=uid(),
-            second_id_client=uid(),
-            client_name="Old Client LLC",
-            contact_name="Nobody",
-            contact_email="old@client.com",
-            active=False,
-        )
+        # USER ROLES
+        user_roles = [
+            UserRole(id=uid(), user_id=emp_admin.id, role="admin"),
+            UserRole(id=uid(), user_id=emp_laura.id, role="employee"),
+            UserRole(id=uid(), user_id=emp_carlos.id, role="employee"),
+            UserRole(id=uid(), user_id=emp_maria.id, role="employee"),
+            UserRole(id=uid(), user_id=emp_diego.id, role="admin"),
+        ]
+        db.add_all(user_roles)
+        db.flush()
+        print(f"  {len(user_roles)} user roles inserted.")
 
+        # CLIENTS
+        cl_acme = Client(id=uid(), name="Acme Corporation", email="info@acme.com", phone="+1 305 555 0100", manager_name="John Smith", manager_email="jsmith@acme.com", manager_phone="+1 305 555 0101")
+        cl_globex = Client(id=uid(), name="Globex Industries", email="info@globex.com", phone="+1 212 555 0200", manager_name="Sarah Connor", manager_email="sconnor@globex.com", manager_phone="+1 212 555 0201")
+        cl_initech = Client(id=uid(), name="Initech Solutions", email="info@initech.com", phone="+1 415 555 0300", manager_name="Bill Lumbergh", manager_email="bill@initech.com")
+        cl_wayne = Client(id=uid(), name="Wayne Enterprises", email="info@wayne.com", phone="+1 312 555 0400", manager_name="Lucius Fox", manager_email="lfox@wayne.com")
+        cl_inactive = Client(id=uid(), name="Old Client LLC", email="old@client.com", is_active=False)
         clients = [cl_acme, cl_globex, cl_initech, cl_wayne, cl_inactive]
         db.add_all(clients)
         db.flush()
         print(f"  {len(clients)} clients inserted.")
 
-        # ============================================================
         # PROJECTS
-        # ============================================================
-        prj_acme_web = Project(
-            id_project=uid(),
-            id_client=cl_acme.second_id_client,
-            project_name="Portal Web Corporativo",
-            billable_default=True,
-            hourly_rate=Decimal("85.00"),
-            active=True,
-        )
-        prj_acme_mobile = Project(
-            id_project=uid(),
-            id_client=cl_acme.second_id_client,
-            project_name="App Móvil Ventas",
-            billable_default=True,
-            hourly_rate=Decimal("90.00"),
-            active=True,
-        )
-        prj_globex_erp = Project(
-            id_project=uid(),
-            id_client=cl_globex.second_id_client,
-            project_name="Sistema ERP",
-            billable_default=True,
-            hourly_rate=Decimal("100.00"),
-            active=True,
-        )
-        prj_globex_bi = Project(
-            id_project=uid(),
-            id_client=cl_globex.second_id_client,
-            project_name="Dashboard BI",
-            billable_default=True,
-            hourly_rate=Decimal("80.00"),
-            active=True,
-        )
-        prj_initech_api = Project(
-            id_project=uid(),
-            id_client=cl_initech.second_id_client,
-            project_name="API REST Microservicios",
-            billable_default=True,
-            hourly_rate=Decimal("95.00"),
-            active=True,
-        )
-        prj_wayne_sec = Project(
-            id_project=uid(),
-            id_client=cl_wayne.second_id_client,
-            project_name="Plataforma Seguridad",
-            billable_default=True,
-            hourly_rate=Decimal("110.00"),
-            active=True,
-        )
-        prj_inactive = Project(
-            id_project=uid(),
-            id_client=cl_inactive.second_id_client,
-            project_name="Proyecto Antiguo",
-            billable_default=False,
-            active=False,
-        )
-
-        projects = [
-            prj_acme_web, prj_acme_mobile, prj_globex_erp,
-            prj_globex_bi, prj_initech_api, prj_wayne_sec, prj_inactive,
-        ]
+        prj_acme_web = Project(id=uid(), client_id=cl_acme.id, name="Portal Web Corporativo", description="Corporate web portal for Acme", is_active=True)
+        prj_acme_mobile = Project(id=uid(), client_id=cl_acme.id, name="App Movil Ventas", description="Mobile sales app", is_active=True)
+        prj_globex_erp = Project(id=uid(), client_id=cl_globex.id, name="Sistema ERP", description="ERP system implementation", is_active=True)
+        prj_globex_bi = Project(id=uid(), client_id=cl_globex.id, name="Dashboard BI", description="Business intelligence dashboard", is_active=True)
+        prj_initech_api = Project(id=uid(), client_id=cl_initech.id, name="API REST Microservicios", description="Microservices REST API", is_active=True)
+        prj_wayne_sec = Project(id=uid(), client_id=cl_wayne.id, name="Plataforma Seguridad", description="Security platform", is_active=True)
+        prj_inactive = Project(id=uid(), client_id=cl_inactive.id, name="Proyecto Antiguo", is_active=False)
+        projects = [prj_acme_web, prj_acme_mobile, prj_globex_erp, prj_globex_bi, prj_initech_api, prj_wayne_sec, prj_inactive]
         db.add_all(projects)
         db.flush()
         print(f"  {len(projects)} projects inserted.")
 
-        # ============================================================
-        # ASSIGNED PROJECTS
-        # ============================================================
+        # PROJECT ROLES
+        roles = []
+        for prj, role_data in [
+            (prj_acme_web, [("Senior Developer", 85), ("Frontend Developer", 65), ("QA Engineer", 55)]),
+            (prj_acme_mobile, [("Mobile Developer", 90), ("UI Designer", 70)]),
+            (prj_globex_erp, [("Backend Developer", 100), ("DevOps Engineer", 95)]),
+            (prj_globex_bi, [("Data Analyst", 80), ("Frontend Developer", 75)]),
+            (prj_initech_api, [("Backend Developer", 95), ("Senior Developer", 110)]),
+            (prj_wayne_sec, [("Security Engineer", 110), ("Backend Developer", 100)]),
+        ]:
+            for rname, rate in role_data:
+                roles.append(ProjectRole(id=uid(), project_id=prj.id, name=rname, hourly_rate_usd=Decimal(str(rate))))
+        db.add_all(roles)
+        db.flush()
+        print(f"  {len(roles)} project roles inserted.")
+
+        # Helper: get first role for a project
+        def first_role(prj):
+            return next((r for r in roles if r.project_id == prj.id), None)
+
+        # EMPLOYEE PROJECTS (assignments)
         assignments = [
-            # Juan (admin) → all active projects
-            AssignedProject(id=uid(), employee_id=emp_admin.id_employee, project_id=prj_acme_web.id_project, client_id=cl_acme.second_id_client),
-            AssignedProject(id=uid(), employee_id=emp_admin.id_employee, project_id=prj_globex_erp.id_project, client_id=cl_globex.second_id_client),
-            AssignedProject(id=uid(), employee_id=emp_admin.id_employee, project_id=prj_wayne_sec.id_project, client_id=cl_wayne.second_id_client),
-            # Laura → Acme + Globex
-            AssignedProject(id=uid(), employee_id=emp_laura.id_employee, project_id=prj_acme_web.id_project, client_id=cl_acme.second_id_client),
-            AssignedProject(id=uid(), employee_id=emp_laura.id_employee, project_id=prj_acme_mobile.id_project, client_id=cl_acme.second_id_client),
-            AssignedProject(id=uid(), employee_id=emp_laura.id_employee, project_id=prj_globex_bi.id_project, client_id=cl_globex.second_id_client),
-            # Carlos → Globex + Initech
-            AssignedProject(id=uid(), employee_id=emp_carlos.id_employee, project_id=prj_globex_erp.id_project, client_id=cl_globex.second_id_client),
-            AssignedProject(id=uid(), employee_id=emp_carlos.id_employee, project_id=prj_initech_api.id_project, client_id=cl_initech.second_id_client),
-            # María → Initech + Wayne
-            AssignedProject(id=uid(), employee_id=emp_maria.id_employee, project_id=prj_initech_api.id_project, client_id=cl_initech.second_id_client),
-            AssignedProject(id=uid(), employee_id=emp_maria.id_employee, project_id=prj_wayne_sec.id_project, client_id=cl_wayne.second_id_client),
-            # Diego → Wayne + Acme
-            AssignedProject(id=uid(), employee_id=emp_diego.id_employee, project_id=prj_wayne_sec.id_project, client_id=cl_wayne.second_id_client),
-            AssignedProject(id=uid(), employee_id=emp_diego.id_employee, project_id=prj_acme_mobile.id_project, client_id=cl_acme.second_id_client),
+            EmployeeProject(id=uid(), user_id=emp_admin.id, project_id=prj_acme_web.id, role_id=first_role(prj_acme_web).id),
+            EmployeeProject(id=uid(), user_id=emp_admin.id, project_id=prj_globex_erp.id, role_id=first_role(prj_globex_erp).id),
+            EmployeeProject(id=uid(), user_id=emp_admin.id, project_id=prj_wayne_sec.id, role_id=first_role(prj_wayne_sec).id),
+            EmployeeProject(id=uid(), user_id=emp_laura.id, project_id=prj_acme_web.id, role_id=roles[1].id),  # Frontend Developer
+            EmployeeProject(id=uid(), user_id=emp_laura.id, project_id=prj_acme_mobile.id, role_id=first_role(prj_acme_mobile).id),
+            EmployeeProject(id=uid(), user_id=emp_laura.id, project_id=prj_globex_bi.id, role_id=first_role(prj_globex_bi).id),
+            EmployeeProject(id=uid(), user_id=emp_carlos.id, project_id=prj_globex_erp.id, role_id=first_role(prj_globex_erp).id),
+            EmployeeProject(id=uid(), user_id=emp_carlos.id, project_id=prj_initech_api.id, role_id=first_role(prj_initech_api).id),
+            EmployeeProject(id=uid(), user_id=emp_maria.id, project_id=prj_initech_api.id, role_id=roles[-3].id),  # Senior Developer
+            EmployeeProject(id=uid(), user_id=emp_maria.id, project_id=prj_wayne_sec.id, role_id=first_role(prj_wayne_sec).id),
+            EmployeeProject(id=uid(), user_id=emp_diego.id, project_id=prj_wayne_sec.id, role_id=first_role(prj_wayne_sec).id),
+            EmployeeProject(id=uid(), user_id=emp_diego.id, project_id=prj_acme_mobile.id, role_id=first_role(prj_acme_mobile).id),
         ]
         db.add_all(assignments)
         db.flush()
         print(f"  {len(assignments)} project assignments inserted.")
 
-        # ============================================================
-        # WEEKS  (Jan & Feb 2026)
-        # ============================================================
-        weeks_data = [
-            # January 2026
-            Week(week_start=date(2025, 12, 29), week_end=date(2026, 1, 4), week_number=1, year_number=2026, is_split_month=True, month_a_key=12, month_b_key=1, qty_days_a=3, qty_days_b=4),
-            Week(week_start=date(2026, 1, 5), week_end=date(2026, 1, 11), week_number=2, year_number=2026),
-            Week(week_start=date(2026, 1, 12), week_end=date(2026, 1, 18), week_number=3, year_number=2026),
-            Week(week_start=date(2026, 1, 19), week_end=date(2026, 1, 25), week_number=4, year_number=2026),
-            Week(week_start=date(2026, 1, 26), week_end=date(2026, 2, 1), week_number=5, year_number=2026, is_split_month=True, month_a_key=1, month_b_key=2, qty_days_a=6, qty_days_b=1),
-            # February 2026
-            Week(week_start=date(2026, 2, 2), week_end=date(2026, 2, 8), week_number=6, year_number=2026),
-            Week(week_start=date(2026, 2, 9), week_end=date(2026, 2, 15), week_number=7, year_number=2026),
-            Week(week_start=date(2026, 2, 16), week_end=date(2026, 2, 22), week_number=8, year_number=2026),
-            Week(week_start=date(2026, 2, 23), week_end=date(2026, 3, 1), week_number=9, year_number=2026, is_split_month=True, month_a_key=2, month_b_key=3, qty_days_a=5, qty_days_b=2),
-        ]
-        db.add_all(weeks_data)
-        db.flush()
-        print(f"  {len(weeks_data)} weeks inserted.")
+        # TIME ENTRIES (daily, spread across Jan-Feb 2026)
+        time_entries = []
+        def te(emp, prj, d, hours, billable=True, notes=None):
+            r = first_role(prj)
+            time_entries.append(TimeEntry(
+                id=uid(), user_id=emp.id, project_id=prj.id,
+                role_id=r.id if r else None,
+                date=d, hours=Decimal(str(hours)), billable=billable, notes=notes,
+            ))
 
-        # ============================================================
-        # TIME ENTRIES  (spread across Jan & Feb 2026)
-        # ============================================================
-        def te(emp, prj, cli, ws, hours, loc="remote"):
-            return TimeEntry(
-                id_hours=uid(),
-                id_employee=emp.id_employee,
-                id_project=prj.id_project,
-                id_client=cli.second_id_client,
-                week_start=ws,
-                total_hours=Decimal(str(hours)),
-                billable=True,
-                location_type=loc,
-                created_at=datetime.now(timezone.utc),
-            )
+        # Week of Jan 5-9
+        for d in range(5, 10):
+            te(emp_admin, prj_acme_web, date(2026, 1, d), 6.5)
+            te(emp_laura, prj_acme_web, date(2026, 1, d), 4)
+            te(emp_carlos, prj_globex_erp, date(2026, 1, d), 8)
+        te(emp_admin, prj_globex_erp, date(2026, 1, 5), 1.5)
+        te(emp_laura, prj_acme_mobile, date(2026, 1, 6), 4)
+        te(emp_laura, prj_acme_mobile, date(2026, 1, 7), 4)
+        te(emp_maria, prj_initech_api, date(2026, 1, 5), 7)
+        te(emp_maria, prj_initech_api, date(2026, 1, 6), 7)
+        te(emp_maria, prj_initech_api, date(2026, 1, 7), 7)
+        te(emp_maria, prj_initech_api, date(2026, 1, 8), 7)
+        te(emp_maria, prj_initech_api, date(2026, 1, 9), 7)
+        te(emp_diego, prj_wayne_sec, date(2026, 1, 5), 6)
+        te(emp_diego, prj_wayne_sec, date(2026, 1, 6), 6)
+        te(emp_diego, prj_wayne_sec, date(2026, 1, 7), 6)
+        te(emp_diego, prj_wayne_sec, date(2026, 1, 8), 6)
+        te(emp_diego, prj_wayne_sec, date(2026, 1, 9), 6)
+        te(emp_diego, prj_acme_mobile, date(2026, 1, 8), 2)
 
-        time_entries = [
-            # ---- Week 2 (Jan 5) ----
-            te(emp_admin, prj_acme_web, cl_acme, date(2026, 1, 5), 32),
-            te(emp_admin, prj_globex_erp, cl_globex, date(2026, 1, 5), 8),
-            te(emp_laura, prj_acme_web, cl_acme, date(2026, 1, 5), 20),
-            te(emp_laura, prj_acme_mobile, cl_acme, date(2026, 1, 5), 16),
-            te(emp_carlos, prj_globex_erp, cl_globex, date(2026, 1, 5), 40, "onsite"),
-            te(emp_maria, prj_initech_api, cl_initech, date(2026, 1, 5), 35),
-            te(emp_diego, prj_wayne_sec, cl_wayne, date(2026, 1, 5), 30),
-            te(emp_diego, prj_acme_mobile, cl_acme, date(2026, 1, 5), 10),
+        # Week of Jan 12-16
+        for d in range(12, 17):
+            te(emp_admin, prj_acme_web, date(2026, 1, d), 5)
+            te(emp_laura, prj_globex_bi, date(2026, 1, d), 8)
+            te(emp_diego, prj_wayne_sec, date(2026, 1, d), 8)
+        te(emp_admin, prj_wayne_sec, date(2026, 1, 12), 3)
+        te(emp_carlos, prj_initech_api, date(2026, 1, 12), 8)
+        te(emp_carlos, prj_initech_api, date(2026, 1, 13), 8)
+        te(emp_carlos, prj_initech_api, date(2026, 1, 14), 8)
+        te(emp_carlos, prj_initech_api, date(2026, 1, 15), 8)
+        te(emp_carlos, prj_globex_erp, date(2026, 1, 16), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 1, 12), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 1, 13), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 1, 14), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 1, 15), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 1, 16), 8)
 
-            # ---- Week 3 (Jan 12) ----
-            te(emp_admin, prj_acme_web, cl_acme, date(2026, 1, 12), 25),
-            te(emp_admin, prj_wayne_sec, cl_wayne, date(2026, 1, 12), 15),
-            te(emp_laura, prj_globex_bi, cl_globex, date(2026, 1, 12), 40),
-            te(emp_carlos, prj_initech_api, cl_initech, date(2026, 1, 12), 32),
-            te(emp_carlos, prj_globex_erp, cl_globex, date(2026, 1, 12), 8),
-            te(emp_maria, prj_wayne_sec, cl_wayne, date(2026, 1, 12), 40, "onsite"),
-            te(emp_diego, prj_wayne_sec, cl_wayne, date(2026, 1, 12), 40),
-
-            # ---- Week 4 (Jan 19) ----
-            te(emp_admin, prj_globex_erp, cl_globex, date(2026, 1, 19), 40),
-            te(emp_laura, prj_acme_web, cl_acme, date(2026, 1, 19), 24),
-            te(emp_laura, prj_acme_mobile, cl_acme, date(2026, 1, 19), 16),
-            te(emp_carlos, prj_initech_api, cl_initech, date(2026, 1, 19), 40),
-            te(emp_maria, prj_initech_api, cl_initech, date(2026, 1, 19), 20),
-            te(emp_maria, prj_wayne_sec, cl_wayne, date(2026, 1, 19), 20),
-            te(emp_diego, prj_acme_mobile, cl_acme, date(2026, 1, 19), 40),
-
-            # ---- Week 6 (Feb 2) ----
-            te(emp_admin, prj_acme_web, cl_acme, date(2026, 2, 2), 30),
-            te(emp_admin, prj_wayne_sec, cl_wayne, date(2026, 2, 2), 10),
-            te(emp_laura, prj_globex_bi, cl_globex, date(2026, 2, 2), 36),
-            te(emp_laura, prj_acme_web, cl_acme, date(2026, 2, 2), 4),
-            te(emp_carlos, prj_globex_erp, cl_globex, date(2026, 2, 2), 24),
-            te(emp_carlos, prj_initech_api, cl_initech, date(2026, 2, 2), 16),
-            te(emp_maria, prj_wayne_sec, cl_wayne, date(2026, 2, 2), 40, "onsite"),
-            te(emp_diego, prj_wayne_sec, cl_wayne, date(2026, 2, 2), 32),
-            te(emp_diego, prj_acme_mobile, cl_acme, date(2026, 2, 2), 8),
-
-            # ---- Week 7 (Feb 9 – current week) ----
-            te(emp_admin, prj_acme_web, cl_acme, date(2026, 2, 9), 20),
-            te(emp_admin, prj_globex_erp, cl_globex, date(2026, 2, 9), 16),
-            te(emp_laura, prj_acme_mobile, cl_acme, date(2026, 2, 9), 30),
-            te(emp_laura, prj_globex_bi, cl_globex, date(2026, 2, 9), 10),
-            te(emp_carlos, prj_initech_api, cl_initech, date(2026, 2, 9), 40),
-            te(emp_maria, prj_initech_api, cl_initech, date(2026, 2, 9), 24),
-            te(emp_maria, prj_wayne_sec, cl_wayne, date(2026, 2, 9), 16),
-            te(emp_diego, prj_wayne_sec, cl_wayne, date(2026, 2, 9), 40),
-        ]
+        # Week of Feb 2-6
+        for d in range(2, 7):
+            te(emp_admin, prj_acme_web, date(2026, 2, d), 6)
+            te(emp_laura, prj_globex_bi, date(2026, 2, d), 7)
+            te(emp_diego, prj_wayne_sec, date(2026, 2, d), 6.5)
+        te(emp_admin, prj_wayne_sec, date(2026, 2, 2), 2)
+        te(emp_laura, prj_acme_web, date(2026, 2, 3), 1)
+        te(emp_carlos, prj_globex_erp, date(2026, 2, 2), 5)
+        te(emp_carlos, prj_globex_erp, date(2026, 2, 3), 5)
+        te(emp_carlos, prj_globex_erp, date(2026, 2, 4), 5)
+        te(emp_carlos, prj_globex_erp, date(2026, 2, 5), 5)
+        te(emp_carlos, prj_initech_api, date(2026, 2, 6), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 2, 2), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 2, 3), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 2, 4), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 2, 5), 8)
+        te(emp_maria, prj_wayne_sec, date(2026, 2, 6), 8)
+        te(emp_diego, prj_acme_mobile, date(2026, 2, 4), 1.5)
 
         db.add_all(time_entries)
         db.flush()
         print(f"  {len(time_entries)} time entries inserted.")
 
-        # ============================================================
-        # INVOICES  (one per client for January)
-        # ============================================================
+        # INVOICES
         inv_acme = Invoice(
-            id_invoice=uid(),
-            invoice_number="INV-2026-001",
-            primary_id_client=cl_acme.primary_id_client,
-            second_id_client=cl_acme.second_id_client,
-            period_start=date(2026, 1, 1),
-            period_end=date(2026, 1, 31),
-            issue_date=date(2026, 2, 1),
-            total_hours=Decimal("182"),
-            total_fees=Decimal("15470.00"),
-            status="sent",
+            id=uid(), project_id=prj_acme_web.id, status="sent",
+            invoice_number="INV-2026-001", issue_date=date(2026, 2, 1),
+            subtotal=Decimal("15470.00"), discount=Decimal("0"), total=Decimal("15470.00"),
         )
         inv_globex = Invoice(
-            id_invoice=uid(),
-            invoice_number="INV-2026-002",
-            primary_id_client=cl_globex.primary_id_client,
-            second_id_client=cl_globex.second_id_client,
-            period_start=date(2026, 1, 1),
-            period_end=date(2026, 1, 31),
-            issue_date=date(2026, 2, 1),
-            total_hours=Decimal("136"),
-            total_fees=Decimal("12240.00"),
-            status="draft",
+            id=uid(), project_id=prj_globex_erp.id, status="draft",
+            invoice_number="INV-2026-002", issue_date=date(2026, 2, 1),
+            subtotal=Decimal("12240.00"), discount=Decimal("0"), total=Decimal("12240.00"),
         )
-
         invoices = [inv_acme, inv_globex]
         db.add_all(invoices)
         db.flush()
         print(f"  {len(invoices)} invoices inserted.")
 
-        # ============================================================
         # INVOICE LINES
-        # ============================================================
         invoice_lines = [
-            InvoiceLine(
-                id_invoice_line=uid(),
-                id_invoice=inv_acme.id_invoice,
-                id_employee=emp_admin.id_employee,
-                id_project=prj_acme_web.id_project,
-                role_title="Senior Developer",
-                hourly_rate=Decimal("75.00"),
-                hours=Decimal("57"),
-                subtotal=Decimal("4275.00"),
-                discount=Decimal("0"),
-                total=Decimal("4275.00"),
-            ),
-            InvoiceLine(
-                id_invoice_line=uid(),
-                id_invoice=inv_acme.id_invoice,
-                id_employee=emp_laura.id_employee,
-                id_project=prj_acme_web.id_project,
-                role_title="Frontend Developer",
-                hourly_rate=Decimal("55.00"),
-                hours=Decimal("44"),
-                subtotal=Decimal("2420.00"),
-                discount=Decimal("0"),
-                total=Decimal("2420.00"),
-            ),
-            InvoiceLine(
-                id_invoice_line=uid(),
-                id_invoice=inv_globex.id_invoice,
-                id_employee=emp_carlos.id_employee,
-                id_project=prj_globex_erp.id_project,
-                role_title="Backend Developer",
-                hourly_rate=Decimal("60.00"),
-                hours=Decimal("48"),
-                subtotal=Decimal("2880.00"),
-                discount=Decimal("0"),
-                total=Decimal("2880.00"),
-            ),
+            InvoiceLine(id=uid(), invoice_id=inv_acme.id, user_id=emp_admin.id,
+                       employee_name="Juan Leguizamon", role_name="Senior Developer",
+                       hours=Decimal("57"), rate_snapshot=Decimal("85.00"), amount=Decimal("4845.00")),
+            InvoiceLine(id=uid(), invoice_id=inv_acme.id, user_id=emp_laura.id,
+                       employee_name="Laura Garcia", role_name="Frontend Developer",
+                       hours=Decimal("44"), rate_snapshot=Decimal("65.00"), amount=Decimal("2860.00")),
+            InvoiceLine(id=uid(), invoice_id=inv_globex.id, user_id=emp_carlos.id,
+                       employee_name="Carlos Rodriguez", role_name="Backend Developer",
+                       hours=Decimal("48"), rate_snapshot=Decimal("100.00"), amount=Decimal("4800.00")),
         ]
         db.add_all(invoice_lines)
         db.flush()
         print(f"  {len(invoice_lines)} invoice lines inserted.")
 
-        # ============================================================
+        # INVOICE MANUAL LINE (sample)
+        manual_line = InvoiceManualLine(
+            id=uid(), invoice_id=inv_acme.id, person_name="External Consultant",
+            hours=Decimal("10"), rate_usd=Decimal("120.00"),
+            description="External security audit", line_total=Decimal("1200.00"),
+        )
+        db.add(manual_line)
+        db.flush()
+        print("  1 invoice manual line inserted.")
+
+        # INVOICE FEE (sample)
+        fee = InvoiceFee(
+            id=uid(), invoice_id=inv_acme.id, label="Cloud hosting",
+            quantity=Decimal("1"), unit_price_usd=Decimal("500.00"),
+            description="Monthly AWS hosting fee", fee_total=Decimal("500.00"),
+        )
+        db.add(fee)
+        db.flush()
+        print("  1 invoice fee inserted.")
+
         db.commit()
         print("\nSeed completed successfully!")
         print(f"\nSummary:")
-        print(f"  Employees:     {len(employees)}")
-        print(f"  Clients:       {len(clients)}")
-        print(f"  Projects:      {len(projects)}")
-        print(f"  Assignments:   {len(assignments)}")
-        print(f"  Weeks:         {len(weeks_data)}")
-        print(f"  Time Entries:  {len(time_entries)}")
-        print(f"  Invoices:      {len(invoices)}")
-        print(f"  Invoice Lines: {len(invoice_lines)}")
+        print(f"  Employees:      {len(employees)}")
+        print(f"  User Roles:     {len(user_roles)}")
+        print(f"  Clients:        {len(clients)}")
+        print(f"  Projects:       {len(projects)}")
+        print(f"  Project Roles:  {len(roles)}")
+        print(f"  Assignments:    {len(assignments)}")
+        print(f"  Time Entries:   {len(time_entries)}")
+        print(f"  Invoices:       {len(invoices)}")
+        print(f"  Invoice Lines:  {len(invoice_lines)}")
 
     except Exception as e:
         db.rollback()

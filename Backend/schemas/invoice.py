@@ -1,19 +1,11 @@
-from pydantic import BaseModel
+# schemas/invoice.py
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import date, datetime
-from decimal import Decimal
 
 
 class InvoiceBase(BaseModel):
-    invoice_number: Optional[str] = None
-    primary_id_client: str 
-    second_id_client: str  
-    period_start: date
-    period_end: date
-    issue_date: date
-    total_hours: Decimal = Decimal("0.00")
-    total_fees: Decimal = Decimal("0.00")
-    currency: str = "USD"
+    project_id: str
     status: str = "draft"
     notes: Optional[str] = None
 
@@ -23,22 +15,29 @@ class InvoiceCreate(InvoiceBase):
 
 
 class InvoiceUpdate(BaseModel):
-    invoice_number: Optional[str] = None
-    primary_id_client: Optional[str] = None  
-    second_id_client: Optional[str] = None 
-    period_start: Optional[date] = None
-    period_end: Optional[date] = None
-    issue_date: Optional[date] = None
-    total_hours: Optional[Decimal] = None
-    total_fees: Optional[Decimal] = None
-    currency: Optional[str] = None
+    project_id: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    subtotal: Optional[float] = None
+    discount: Optional[float] = None
+    total: Optional[float] = None
+    invoice_number: Optional[str] = None
+    issue_date: Optional[date] = None
+    due_date: Optional[date] = None
 
 
-class InvoiceOut(InvoiceBase):
-    id_invoice: str
+class InvoiceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    status: str
+    subtotal: float
+    discount: float
+    total: float
+    notes: Optional[str] = None
+    invoice_number: Optional[str] = None
+    issue_date: Optional[date] = None
+    due_date: Optional[date] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    updated_at: datetime

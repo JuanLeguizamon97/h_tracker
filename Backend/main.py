@@ -1,33 +1,30 @@
 import os
 import logging
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, Security, Depends
+from fastapi import FastAPI, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from utils.auth_microsoft import azure_scheme
 from config.database import engine, Base
 
-from routers.assigned_projects import aprojects_router
+# Import routers
+from routers.auth import auth_router
 from routers.clients import clients_router
 from routers.employees import employees_router
 from routers.projects import projects_router
+from routers.project_roles import project_roles_router
+from routers.user_roles import user_roles_router
+from routers.employee_projects import employee_projects_router
 from routers.time_entries import time_entries_router
-from routers.weeks import weeks_router
 from routers.invoice import invoice_router
 from routers.invoice_lines import invoice_lines_router
-from routers.auth import auth_router
+from routers.invoice_manual_lines import invoice_manual_lines_router
+from routers.invoice_fees import invoice_fees_router
+from routers.invoice_fee_attachments import invoice_fee_attachments_router
+from routers.invoice_time_entries import invoice_time_entries_router
 
 # Import all models so Base.metadata sees them
-from models.employees import Employees  # noqa
-from models.clients import Client  # noqa
-from models.projects import Project  # noqa
-from models.time_entries import TimeEntry  # noqa
-from models.assigned_projects import AssignedProject  # noqa
-from models.invoice import Invoice  # noqa
-from models.invoice_lines import InvoiceLine  # noqa
-from models.weeks import Week  # noqa
-from models.app_user import AppUser  # noqa
+import models  # noqa - imports all models via __init__.py
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,10 +48,10 @@ app = FastAPI(
     },
 )
 app.title = "Impact Point Hours Tracker"
-app.version = "0.0.1"
+app.version = "0.0.2"
 
 # CORS
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8080").split(",")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8080,http://localhost:3000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,6 +60,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static files for uploads
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "uploads"))
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 # ---------- Auth dependency selection ----------
@@ -79,17 +81,20 @@ def get_auth_dependency():
 auth_deps = get_auth_dependency()
 
 # ---------- Routers ----------
-# Auth router has its own auth handling
 app.include_router(auth_router)
-
-app.include_router(aprojects_router, dependencies=auth_deps)
 app.include_router(clients_router, dependencies=auth_deps)
 app.include_router(employees_router, dependencies=auth_deps)
 app.include_router(projects_router, dependencies=auth_deps)
+app.include_router(project_roles_router, dependencies=auth_deps)
+app.include_router(user_roles_router, dependencies=auth_deps)
+app.include_router(employee_projects_router, dependencies=auth_deps)
 app.include_router(time_entries_router, dependencies=auth_deps)
-app.include_router(weeks_router, dependencies=auth_deps)
 app.include_router(invoice_router, dependencies=auth_deps)
 app.include_router(invoice_lines_router, dependencies=auth_deps)
+app.include_router(invoice_manual_lines_router, dependencies=auth_deps)
+app.include_router(invoice_fees_router, dependencies=auth_deps)
+app.include_router(invoice_fee_attachments_router, dependencies=auth_deps)
+app.include_router(invoice_time_entries_router, dependencies=auth_deps)
 
 
 # ---------- Health check ----------

@@ -1,22 +1,18 @@
 # schemas/time_entries.py
-from pydantic import BaseModel
-from datetime import date, datetime
-from decimal import Decimal
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
+from datetime import date, datetime
 
 
 class TimeEntryBase(BaseModel):
-    id_employee: str
-    id_project: str
-    id_client: str
-    week_start: date
-    total_hours: Decimal
+    user_id: str
+    project_id: str
+    role_id: Optional[str] = None
+    date: date
+    hours: float
     billable: bool = True
-    location_type: str
-    location_value: Optional[str] = None
-    is_split_month: bool = False
-    month_a_hours: Optional[Decimal] = None
-    month_b_hours: Optional[Decimal] = None
+    notes: Optional[str] = None
+    status: str = "normal"
 
 
 class TimeEntryCreate(TimeEntryBase):
@@ -24,22 +20,18 @@ class TimeEntryCreate(TimeEntryBase):
 
 
 class TimeEntryUpdate(BaseModel):
-    id_employee: Optional[str] = None
-    id_project: Optional[str] = None
-    id_client: Optional[str] = None
-    week_start: Optional[date] = None
-    total_hours: Optional[Decimal] = None
+    user_id: Optional[str] = None
+    project_id: Optional[str] = None
+    role_id: Optional[str] = None
+    date: Optional[date] = None
+    hours: Optional[float] = None
     billable: Optional[bool] = None
-    location_type: Optional[str] = None
-    location_value: Optional[str] = None
-    is_split_month: Optional[bool] = None
-    month_a_hours: Optional[Decimal] = None
-    month_b_hours: Optional[Decimal] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
 
 
 class TimeEntryOut(TimeEntryBase):
-    id_hours: str
-    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+    id: str
+    created_at: datetime

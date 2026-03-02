@@ -1,33 +1,22 @@
 from config.database import Base
-from sqlalchemy import Column, Integer, String, Boolean, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
 import uuid
+
 
 class Client(Base):
 
     __tablename__ = "clients"
-    __table_args__ = (
-        UniqueConstraint("second_id_client", name="uq_clients_second_id"),
-    )
 
-    # Claves de negocio (entidad / grupo), ya NO como PK
-    primary_id_client = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) #entidad
-    second_id_client = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) #grupo
-    client_name = Column(String, nullable=False)
-    contact_name = Column(String, nullable=True)
-    contact_title = Column(String, nullable=True)
-    contact_email = Column(String, nullable=True)
-    contact_phone = Column(String, nullable=True)
-    billing_address_line1 = Column(String, nullable=True)
-    billing_address_line2 = Column(String, nullable=True)
-    billing_city = Column(String, nullable=True)
-    billing_state = Column(String, nullable=True)
-    billing_postal_code = Column(Integer, nullable=True)
-    billing_country = Column(String, nullable=True)
-    active = Column(Boolean, nullable=False, default=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    manager_name = Column(String, nullable=True)
+    manager_email = Column(String, nullable=True)
+    manager_phone = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
-    # Relaciones: deben coincidir con lo que pusimos en Project y TimeEntry
     projects = relationship("Project", back_populates="client")
-    assigned_projects = relationship("AssignedProject", back_populates="client")
-    time_entries = relationship("TimeEntry", back_populates="client")
-    invoices = relationship("Invoice", back_populates="client")

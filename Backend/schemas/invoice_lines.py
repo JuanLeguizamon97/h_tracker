@@ -1,49 +1,35 @@
 # schemas/invoice_lines.py
-from __future__ import annotations
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
-
-from pydantic import BaseModel
+from datetime import datetime
 
 
 class InvoiceLineBase(BaseModel):
-    id_invoice: str
-    id_employee: str
-    id_project: str
-
-    role_title: Optional[str] = None
-    hourly_rate: float
+    invoice_id: str
+    user_id: str
+    employee_name: str
+    role_name: Optional[str] = None
     hours: float
-    discount: float = 0.0
+    rate_snapshot: float
+    amount: float
 
 
 class InvoiceLineCreate(InvoiceLineBase):
-    """
-    Subtotal y total se calculan en el service:
-    subtotal = hours * hourly_rate
-    total = subtotal - discount
-    """
     pass
 
 
 class InvoiceLineUpdate(BaseModel):
-    role_title: Optional[str] = None
-    hourly_rate: Optional[float] = None
+    invoice_id: Optional[str] = None
+    user_id: Optional[str] = None
+    employee_name: Optional[str] = None
+    role_name: Optional[str] = None
     hours: Optional[float] = None
-    discount: Optional[float] = None
+    rate_snapshot: Optional[float] = None
+    amount: Optional[float] = None
 
 
-class InvoiceLineOut(BaseModel):
-    id_invoice_line: str
-    id_invoice: str
-    id_employee: str
-    id_project: str
+class InvoiceLineOut(InvoiceLineBase):
+    model_config = ConfigDict(from_attributes=True)
 
-    role_title: Optional[str]
-    hourly_rate: float
-    hours: float
-    subtotal: float
-    discount: float
-    total: float
-
-    class Config:
-        from_attributes = True
+    id: str
+    created_at: datetime

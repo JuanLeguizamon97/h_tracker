@@ -1,33 +1,34 @@
 # schemas/employees.py
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
-from decimal import Decimal
+from datetime import datetime
 
 
 class EmployeeBase(BaseModel):
-    employee_name: str
-    employee_email: EmailStr
-    home_state: Optional[str] = None
-    home_country: Optional[str] = None
-    role: str = "employee"
-    hourly_rate: Optional[Decimal] = None
+    name: str
+    email: str
+    hourly_rate: Optional[float] = None
+    is_active: bool = True
+    supervisor_id: Optional[str] = None
 
 
 class EmployeeCreate(EmployeeBase):
-    pass
+    user_id: Optional[str] = None
 
 
 class EmployeeUpdate(BaseModel):
-    employee_name: Optional[str] = None
-    employee_email: Optional[EmailStr] = None
-    home_state: Optional[str] = None
-    home_country: Optional[str] = None
-    role: Optional[str] = None
-    hourly_rate: Optional[Decimal] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
+    hourly_rate: Optional[float] = None
+    is_active: Optional[bool] = None
+    supervisor_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class EmployeeOut(EmployeeBase):
-    id_employee: str
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+    id: str
+    user_id: str
+    created_at: datetime
+    updated_at: datetime

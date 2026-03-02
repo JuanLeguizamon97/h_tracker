@@ -5,19 +5,17 @@ from datetime import datetime, timezone
 import uuid
 
 
-class InvoiceLine(Base):
+class InvoiceManualLine(Base):
 
-    __tablename__ = "invoice_lines"
+    __tablename__ = "invoice_manual_lines"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     invoice_id = Column(String, ForeignKey("invoices.id"), nullable=False)
-    user_id = Column(String, ForeignKey("employees.id"), nullable=False)
-    employee_name = Column(String, nullable=False)
-    role_name = Column(String, nullable=True)
+    person_name = Column(String, nullable=False)
     hours = Column(Numeric(10, 2), nullable=False)
-    rate_snapshot = Column(Numeric(10, 2), nullable=False)
-    amount = Column(Numeric(12, 2), nullable=False)
+    rate_usd = Column(Numeric(10, 2), nullable=False)
+    description = Column(String, nullable=True)
+    line_total = Column(Numeric(12, 2), nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
-    invoice = relationship("Invoice", back_populates="lines")
-    employee = relationship("Employee")
+    invoice = relationship("Invoice", back_populates="manual_lines")

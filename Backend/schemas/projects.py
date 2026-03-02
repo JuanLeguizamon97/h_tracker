@@ -1,15 +1,15 @@
 # schemas/projects.py
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
-from decimal import Decimal
+from datetime import datetime
 
 
 class ProjectBase(BaseModel):
-    id_client: str
-    project_name: str
-    billable_default: bool = True
-    hourly_rate: Optional[Decimal] = None
-    active: bool = True
+    client_id: str
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+    is_internal: bool = False
 
 
 class ProjectCreate(ProjectBase):
@@ -17,15 +17,15 @@ class ProjectCreate(ProjectBase):
 
 
 class ProjectUpdate(BaseModel):
-    id_client: Optional[str] = None
-    project_name: Optional[str] = None
-    billable_default: Optional[bool] = None
-    hourly_rate: Optional[Decimal] = None
-    active: Optional[bool] = None
+    client_id: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_internal: Optional[bool] = None
 
 
 class ProjectOut(ProjectBase):
-    id_project: str
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+    id: str
+    created_at: datetime
