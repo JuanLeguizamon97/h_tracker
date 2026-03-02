@@ -35,6 +35,9 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-9a347a67-e3c3-4de7-9c88-449af6f6c092}
       AZURE_API_SCOPE: ${AZURE_API_SCOPE:-api://6cda0fcc-09b3-4173-b6cc-07df8bf2b82b/user_impersonation}
       SQL_ECHO: "false"
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
 
   frontend:
     build:
@@ -48,3 +51,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:

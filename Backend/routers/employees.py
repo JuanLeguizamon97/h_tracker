@@ -1,44 +1,24 @@
-# routers/employees.py
 import os
-from typing import List
-
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from config.database import get_db
-
 from services.employees import (
-    create_employee,
-    get_employees,
-    get_employee as get_employee_service,
-    get_or_create_employee_by_email,
-    update_employee as update_employee_service,
-    delete_employee as delete_employee_service,
+    create_employee, get_employees, get_employee, get_or_create_employee_by_email,
+    update_employee, delete_employee,
 )
 from schemas.employees import EmployeeCreate, EmployeeUpdate, EmployeeOut
 
 AUTH_MODE = os.getenv("AUTH_MODE", "azure")
 
-employees_router = APIRouter(
-    prefix="/employees",
-    tags=["employees"],
-)
+employees_router = APIRouter(prefix="/employees", tags=["employees"])
 
-_MOCK_EMPLOYEE = {
-    "email": "dev@impactpoint.dev",
-    "name": "Dev Admin",
-}
+_MOCK_EMPLOYEE = {"email": "dev@impactpoint.dev", "name": "Dev Admin"}
 
 
-@employees_router.get(
-    "/me",
-    response_model=EmployeeOut,
-    status_code=status.HTTP_200_OK,
-)
-async def get_current_employee(
-    request: Request,
-    db: Session = Depends(get_db),
-):
+@employees_router.get("/me", response_model=EmployeeOut)
+async def get_current_employee(request: Request, db: Session = Depends(get_db)):
     if AUTH_MODE == "mock":
         email = request.headers.get("X-Dev-User-Email", _MOCK_EMPLOYEE["email"])
         name = request.headers.get("X-Dev-User-Name", _MOCK_EMPLOYEE["name"])
@@ -47,90 +27,36 @@ async def get_current_employee(
         user = await azure_scheme(request)
         email = user.claims.get("preferred_username") or user.claims.get("email", "")
         name = user.claims.get("name", email.split("@")[0])
-
-    role = "admin" if AUTH_MODE == "mock" else "employee"
-    employee = get_or_create_employee_by_email(db, email=email, name=name, role=role)
-    return employee
+    return get_or_create_employee_by_email(db, email=email, name=name)
 
 
-@employees_router.post(
-    "/",
-    response_model=EmployeeOut,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_new_employee(
-    employee_in: EmployeeCreate,
-    db: Session = Depends(get_db),
-):
-    try:
-        return create_employee(db, employee_in)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+@employees_router.post("/", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
+def create_new_employee(employee_in: EmployeeCreate, db: Session = Depends(get_db)):
+    return create_employee(db, employee_in)
 
 
-@employees_router.get(
-    "/",
-    response_model=List[EmployeeOut],
-    status_code=status.HTTP_200_OK,
-)
-def list_employees(
-    db: Session = Depends(get_db),
-):
-    return get_employees(db)
+@employees_router.get("/", response_model=List[EmployeeOut])
+def list_employees(active: Optional[bool] = None, db: Session = Depends(get_db)):
+    return get_employees(db, active=active)
 
 
-@employees_router.get(
-    "/{id_employee}",
-    response_model=EmployeeOut,
-    status_code=status.HTTP_200_OK,
-)
-def get_employee_detail(
-    id_employee: str,
-    db: Session = Depends(get_db),
-):
-    employee = get_employee_service(db, id_employee)
-    if not employee:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
-        )
-    return employee
+@employees_router.get("/{employee_id}", response_model=EmployeeOut)
+def get_employee_detail(employee_id: str, db: Session = Depends(get_db)):
+    emp = get_employee(db, employee_id)
+    if not emp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    return emp
 
 
-@employees_router.put(
-    "/{id_employee}",
-    response_model=EmployeeOut,
-    status_code=status.HTTP_200_OK,
-)
-def update_employee_detail(
-    id_employee: str,
-    employee_in: EmployeeUpdate,
-    db: Session = Depends(get_db),
-):
-    employee = update_employee_service(db, id_employee, employee_in)
-    if not employee:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
-        )
-    return employee
+@employees_router.put("/{employee_id}", response_model=EmployeeOut)
+def update_employee_detail(employee_id: str, employee_in: EmployeeUpdate, db: Session = Depends(get_db)):
+    emp = update_employee(db, employee_id, employee_in)
+    if not emp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    return emp
 
 
-@employees_router.delete(
-    "/{id_employee}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_employee_detail(
-    id_employee: str,
-    db: Session = Depends(get_db),
-):
-    deleted = delete_employee_service(db, id_employee)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
-        )
-    return
+@employees_router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_employee_detail(employee_id: str, db: Session = Depends(get_db)):
+    if not delete_employee(db, employee_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
