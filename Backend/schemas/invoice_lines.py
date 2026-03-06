@@ -12,6 +12,8 @@ class InvoiceLineBase(BaseModel):
     hours: float
     rate_snapshot: float
     amount: float
+    discount: float = 0
+    discount_type: str = 'fixed'  # 'fixed' or 'percentage'
 
 
 class InvoiceLineCreate(InvoiceLineBase):
@@ -26,6 +28,8 @@ class InvoiceLineUpdate(BaseModel):
     hours: Optional[float] = None
     rate_snapshot: Optional[float] = None
     amount: Optional[float] = None
+    discount: Optional[float] = None
+    discount_type: Optional[str] = None
 
 
 class InvoiceLineOut(InvoiceLineBase):

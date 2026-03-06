@@ -17,6 +17,8 @@ class InvoiceLine(Base):
     hours = Column(Numeric(10, 2), nullable=False)
     rate_snapshot = Column(Numeric(10, 2), nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
+    discount = Column(Numeric(12, 2), nullable=False, default=0)
+    discount_type = Column(String, nullable=False, default='fixed')  # 'fixed' or 'percentage'
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     invoice = relationship("Invoice", back_populates="lines")
