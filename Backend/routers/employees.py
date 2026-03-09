@@ -9,6 +9,8 @@ from services.employees import (
     update_employee, delete_employee,
 )
 from schemas.employees import EmployeeCreate, EmployeeUpdate, EmployeeOut
+from models.employees import Employee
+from models.user_roles import UserRole
 
 AUTH_MODE = os.getenv("AUTH_MODE", "azure")
 
@@ -36,8 +38,22 @@ def create_new_employee(employee_in: EmployeeCreate, db: Session = Depends(get_d
 
 
 @employees_router.get("/", response_model=List[EmployeeOut])
-def list_employees(active: Optional[bool] = None, db: Session = Depends(get_db)):
-    return get_employees(db, active=active)
+def list_employees(
+    active: Optional[bool] = None,
+    user_role: Optional[str] = None,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(Employee)
+    if active is not None:
+        query = query.filter(Employee.is_active == active)
+    if user_role:
+        query = query.join(UserRole, UserRole.user_id == Employee.id).filter(
+            UserRole.role == user_role
+        )
+    if search:
+        query = query.filter(Employee.name.ilike(f"%{search}%"))
+    return query.order_by(Employee.name).all()
 
 
 @employees_router.get("/{employee_id}", response_model=EmployeeOut)

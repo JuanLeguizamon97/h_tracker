@@ -12,3 +12,5 @@ from models.invoice_manual_lines import InvoiceManualLine
 from models.invoice_fees import InvoiceFee
 from models.invoice_fee_attachments import InvoiceFeeAttachment
 from models.invoice_time_entries import InvoiceTimeEntry
+from models.invoice_expenses import InvoiceExpense
+from models.project_categories import ProjectCategory

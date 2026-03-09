@@ -26,10 +26,14 @@ class InvoiceLineUpdate(BaseModel):
     hours: Optional[float] = None
     rate_snapshot: Optional[float] = None
     amount: Optional[float] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[float] = None
 
 
 class InvoiceLineOut(InvoiceLineBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    discount_type: Optional[str] = None
+    discount_value: float = 0
     created_at: datetime

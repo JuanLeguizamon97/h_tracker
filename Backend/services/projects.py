@@ -18,12 +18,15 @@ def get_projects(
     db: Session,
     active: Optional[bool] = None,
     client_id: Optional[str] = None,
+    status: Optional[str] = None,
 ) -> List[Project]:
     query = db.query(Project)
     if active is not None:
         query = query.filter(Project.is_active == active)
     if client_id is not None:
         query = query.filter(Project.client_id == client_id)
+    if status is not None:
+        query = query.filter(Project.status == status)
     return query.order_by(Project.name).all()
 
 

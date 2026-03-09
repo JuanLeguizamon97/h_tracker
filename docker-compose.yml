@@ -36,6 +36,10 @@ services:
       AZURE_API_SCOPE: ${AZURE_API_SCOPE:-api://6cda0fcc-09b3-4173-b6cc-07df8bf2b82b/user_impersonation}
       SQL_ECHO: "false"
       UPLOAD_DIR: /app/uploads
+      EXPENSIFY_PARTNER_USER_ID: ${EXPENSIFY_PARTNER_USER_ID:-}
+      EXPENSIFY_PARTNER_USER_SECRET: ${EXPENSIFY_PARTNER_USER_SECRET:-}
+      COP_TO_USD_RATE: ${COP_TO_USD_RATE:-4200}
+      EUR_TO_USD_RATE: ${EUR_TO_USD_RATE:-1.08}
     volumes:
       - uploads:/app/uploads
 
