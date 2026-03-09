@@ -15,6 +15,7 @@ class Invoice(Base):
     subtotal = Column(Numeric(12, 2), nullable=False, default=0)
     discount = Column(Numeric(12, 2), nullable=False, default=0)
     total = Column(Numeric(12, 2), nullable=False, default=0)
+    cap_amount = Column(Numeric(12, 2), nullable=True)
     notes = Column(String, nullable=True)
     invoice_number = Column(String, unique=True, nullable=True)
     issue_date = Column(Date, nullable=True)
@@ -28,3 +29,4 @@ class Invoice(Base):
     manual_lines = relationship("InvoiceManualLine", back_populates="invoice", cascade="all, delete-orphan")
     fees = relationship("InvoiceFee", back_populates="invoice", cascade="all, delete-orphan")
     time_entry_links = relationship("InvoiceTimeEntry", back_populates="invoice", cascade="all, delete-orphan")
+    expenses = relationship("InvoiceExpense", back_populates="invoice", cascade="all, delete-orphan")

@@ -1,7 +1,7 @@
 # schemas/projects.py
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
-from datetime import datetime
+from typing import Optional, List
+from datetime import date, datetime
 
 
 class ProjectBase(BaseModel):
@@ -10,6 +10,16 @@ class ProjectBase(BaseModel):
     description: Optional[str] = None
     is_active: bool = True
     is_internal: bool = False
+    project_code: Optional[str] = None
+    area_category: Optional[str] = None
+    business_unit: Optional[str] = None
+    manager_id: Optional[str] = None
+    referral_id: Optional[str] = None
+    referral_type: Optional[str] = None
+    referral_value: Optional[float] = None
+    status: str = "active"
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 
 class ProjectCreate(ProjectBase):
@@ -22,10 +32,55 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     is_internal: Optional[bool] = None
+    project_code: Optional[str] = None
+    area_category: Optional[str] = None
+    business_unit: Optional[str] = None
+    manager_id: Optional[str] = None
+    referral_id: Optional[str] = None
+    referral_type: Optional[str] = None
+    referral_value: Optional[float] = None
+    status: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 
-class ProjectOut(ProjectBase):
+class ProjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    client_id: str
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+    is_internal: bool = False
+    project_code: Optional[str] = None
+    area_category: Optional[str] = None
+    business_unit: Optional[str] = None
+    manager_id: Optional[str] = None
+    manager_name: Optional[str] = None   # computed in router, not a DB column
+    referral_id: Optional[str] = None
+    referral_type: Optional[str] = None
+    referral_value: Optional[float] = None
+    status: str = "active"
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     created_at: datetime
+
+
+class ProjectCategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    type: str
+    value: str
+    active: bool
+
+
+class ProjectAssignmentOut(BaseModel):
+    id: str
+    user_id: str
+    employee_name: str
+    project_id: str
+    role_id: Optional[str] = None
+    role_name: Optional[str] = None
+    rate: Optional[float] = None

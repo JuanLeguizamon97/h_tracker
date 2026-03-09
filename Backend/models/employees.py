@@ -16,6 +16,9 @@ class Employee(Base):
     hourly_rate = Column(Numeric(10, 2), nullable=True, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
     supervisor_id = Column(String, ForeignKey("employees.id"), nullable=True)
+    title = Column(String, nullable=True)
+    department = Column(String, nullable=True)
+    business_unit = Column(String, nullable=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

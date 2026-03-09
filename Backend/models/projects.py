@@ -1,5 +1,5 @@
 from config.database import Base
-from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Numeric, Date
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
@@ -15,6 +15,16 @@ class Project(Base):
     description = Column(String, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     is_internal = Column(Boolean, nullable=False, default=False)
+    manager_id = Column(String, ForeignKey("employees.id"), nullable=True)
+    project_code = Column(String, unique=True, nullable=True)
+    area_category = Column(String, nullable=True)
+    business_unit = Column(String, nullable=True)
+    referral_id = Column(String, ForeignKey("employees.id"), nullable=True)
+    referral_type = Column(String, nullable=True)
+    referral_value = Column(Numeric(10, 2), nullable=True)
+    status = Column(String, nullable=False, default="active")
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     client = relationship("Client", back_populates="projects")

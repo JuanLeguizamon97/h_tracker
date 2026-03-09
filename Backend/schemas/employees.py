@@ -10,6 +10,9 @@ class EmployeeBase(BaseModel):
     hourly_rate: Optional[float] = None
     is_active: bool = True
     supervisor_id: Optional[str] = None
+    title: Optional[str] = None
+    department: Optional[str] = None
+    business_unit: Optional[str] = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -23,6 +26,9 @@ class EmployeeUpdate(BaseModel):
     is_active: Optional[bool] = None
     supervisor_id: Optional[str] = None
     user_id: Optional[str] = None
+    title: Optional[str] = None
+    department: Optional[str] = None
+    business_unit: Optional[str] = None
 
 
 class EmployeeOut(EmployeeBase):
