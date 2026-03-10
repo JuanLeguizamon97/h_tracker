@@ -1,13 +1,16 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from datetime import date as date_type, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+from sqlalchemy import text as sql_text
 
 from config.database import get_db
 from services.invoice import create_invoice, get_invoices, get_invoice, update_invoice, delete_invoice
 from services.invoice_expenses import create_expense, get_expenses, get_expense, update_expense, delete_expense
 from services.export_pdf import generate_invoice_pdf
 from services.export_excel import generate_invoice_xlsx
+from services.invoice_generator import generate_invoices_for_period
 from schemas.invoice import (
     InvoiceCreate, InvoiceUpdate, InvoiceOut,
     InvoiceEditDataOut, InvoiceEditClient, InvoiceEditProject, InvoiceEditLine, InvoiceEditExpense,
@@ -17,10 +20,13 @@ from schemas.invoice_expenses import InvoiceExpenseCreate
 from schemas.invoice_lines import InvoiceLineUpdate
 from models.invoice_lines import InvoiceLine
 from models.invoice_expenses import InvoiceExpense
+from models.time_entries import TimeEntry
+from models.scheduler_log import SchedulerLog
 from models.projects import Project
 from models.clients import Client
 from models.employees import Employee
 from models.user_roles import UserRole
+from dateutil.relativedelta import relativedelta
 import uuid
 
 invoice_router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -38,6 +44,101 @@ def list_invoices(
     db: Session = Depends(get_db),
 ):
     return get_invoices(db, project_id=project_id, status=status)
+
+
+@invoice_router.get("/check-hours")
+def check_hours(
+    project_id: str,
+    period_start: Optional[str] = None,
+    period_end: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Check if a project has unlinked billable time entries for the period."""
+    if not period_start or not period_end:
+        today = date_type.today()
+        end = today.replace(day=1) - relativedelta(days=1)
+        start = end.replace(day=1)
+    else:
+        start = datetime.strptime(period_start, "%Y-%m-%d").date()
+        end = datetime.strptime(period_end, "%Y-%m-%d").date()
+
+    linked_ids_result = db.execute(
+        sql_text("SELECT time_entry_id FROM invoice_time_entries")
+    ).fetchall()
+    linked_ids = {row[0] for row in linked_ids_result}
+
+    entries = db.query(TimeEntry).filter(
+        TimeEntry.project_id == project_id,
+        TimeEntry.billable == True,
+        TimeEntry.status == 'normal',
+        TimeEntry.date >= start,
+        TimeEntry.date <= end,
+    ).all()
+    available = [e for e in entries if e.id not in linked_ids]
+
+    total_hours = sum(float(e.hours) for e in available)
+    return {
+        "has_entries": len(available) > 0,
+        "total_hours": total_hours,
+        "total_amount": 0.0,
+        "entry_count": len(available),
+    }
+
+
+@invoice_router.post("/generate-monthly")
+def generate_monthly_invoices(body: Dict[str, Any], db: Session = Depends(get_db)):
+    """Manually trigger invoice generation for a given period."""
+    period_start_str = body.get("period_start")
+    period_end_str = body.get("period_end")
+    if not period_start_str or not period_end_str:
+        raise HTTPException(status_code=400, detail="period_start and period_end are required (YYYY-MM-DD)")
+
+    period_start = datetime.strptime(period_start_str, "%Y-%m-%d").date()
+    period_end = datetime.strptime(period_end_str, "%Y-%m-%d").date()
+
+    result = generate_invoices_for_period(db, period_start, period_end)
+
+    log = SchedulerLog(
+        id=str(uuid.uuid4()),
+        run_at=datetime.now(),
+        period_start=period_start_str,
+        period_end=period_end_str,
+        invoices_generated=result["generated"],
+        invoices_skipped=result["skipped"],
+        status="success" if not result["errors"] else "error",
+        error_message="; ".join(result["errors"]) if result["errors"] else None,
+    )
+    db.add(log)
+    db.commit()
+
+    return result
+
+
+@invoice_router.get("/scheduler-status")
+def get_scheduler_status(db: Session = Depends(get_db)):
+    """Get the last scheduler run info."""
+    last_log = db.query(SchedulerLog).order_by(SchedulerLog.run_at.desc()).first()
+    if not last_log:
+        return {
+            "last_run": None,
+            "last_period": None,
+            "invoices_generated": 0,
+            "next_run": None,
+        }
+
+    today = date_type.today()
+    if today.day <= 5:
+        next_run = today.replace(day=5)
+    else:
+        next_run = (today.replace(day=1) + relativedelta(months=1)).replace(day=5)
+
+    return {
+        "last_run": last_log.run_at.isoformat() if last_log.run_at else None,
+        "last_period": f"{last_log.period_start} / {last_log.period_end}",
+        "invoices_generated": last_log.invoices_generated,
+        "next_run": next_run.isoformat(),
+        "status": last_log.status,
+    }
 
 
 def _build_edit_data(invoice_id: str, db: Session) -> dict:

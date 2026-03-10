@@ -14,3 +14,4 @@ from models.invoice_fee_attachments import InvoiceFeeAttachment
 from models.invoice_time_entries import InvoiceTimeEntry
 from models.invoice_expenses import InvoiceExpense
 from models.project_categories import ProjectCategory
+from models.scheduler_log import SchedulerLog

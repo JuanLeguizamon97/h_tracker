@@ -109,3 +109,15 @@ def health():
 
 # ---------- Create tables (fallback if no Alembic migration run) ----------
 Base.metadata.create_all(bind=engine)
+
+
+# ---------- Scheduler ----------
+from services.invoice_scheduler import start_scheduler, stop_scheduler
+
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    stop_scheduler()
