@@ -12,6 +12,7 @@ from models.time_entries import TimeEntry
 from models.employee_projects import EmployeeProject
 from models.project_roles import ProjectRole
 from models.employees import Employee
+from services.invoice_number_service import atomic_generate_number
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +67,10 @@ def generate_invoices_for_period(db: Session, period_start: date, period_end: da
                 logger.info(f"Skipping project {project.id}: no unlinked billable entries")
                 continue
 
-            # Generate invoice number INV-{YYYY}-{seq:03d}
-            year = period_end.year
-            count_result = db.execute(
-                text(f"SELECT COUNT(*) FROM invoices WHERE invoice_number LIKE 'INV-{year}-%'")
-            ).scalar()
-            seq = (count_result or 0) + 1
-            invoice_number = f"INV-{year}-{seq:03d}"
+            # Derive company and create invoice (number assigned atomically below)
+            company = getattr(project, 'owner_company', None) or 'IPC'
+            issue_year = period_end.year
 
-            # Create invoice
             invoice = Invoice(
                 id=str(uuid.uuid4()),
                 project_id=project.id,
@@ -82,11 +78,13 @@ def generate_invoices_for_period(db: Session, period_start: date, period_end: da
                 subtotal=0,
                 discount=0,
                 total=0,
-                invoice_number=invoice_number,
+                owner_company=company,
                 issue_date=date.today(),
                 notes=f"[Auto-generated] Period: {period_start} to {period_end}",
             )
             db.add(invoice)
+            invoice_number = atomic_generate_number(db, company, issue_year)
+            invoice.invoice_number = invoice_number
             db.flush()
 
             # Get project roles and employee assignments
@@ -152,6 +150,18 @@ def generate_invoices_for_period(db: Session, period_start: date, period_end: da
             # Update invoice totals
             invoice.subtotal = subtotal
             invoice.total = subtotal
+
+            # Notify project manager
+            if project.manager_id:
+                from services.notifications import notify_invoice_generated
+                notify_invoice_generated(
+                    db,
+                    invoice_id=invoice.id,
+                    invoice_number=invoice_number,
+                    project_name=project.name,
+                    manager_id=project.manager_id,
+                    total=subtotal,
+                )
 
             db.commit()
             generated += 1

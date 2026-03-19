@@ -42,6 +42,7 @@ services:
       EUR_TO_USD_RATE: ${EUR_TO_USD_RATE:-1.08}
     volumes:
       - uploads:/app/uploads
+      - ./assets:/app/assets:ro
 
   frontend:
     build:

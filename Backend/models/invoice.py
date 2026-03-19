@@ -20,6 +20,11 @@ class Invoice(Base):
     invoice_number = Column(String, unique=True, nullable=True)
     issue_date = Column(Date, nullable=True)
     due_date = Column(Date, nullable=True)
+    period_start = Column(Date, nullable=True)
+    period_end = Column(Date, nullable=True)
+    signatory_name = Column(String, nullable=True)
+    signatory_title = Column(String, nullable=True)
+    owner_company = Column(String(10), nullable=True, default='IPC')
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -30,3 +35,4 @@ class Invoice(Base):
     fees = relationship("InvoiceFee", back_populates="invoice", cascade="all, delete-orphan")
     time_entry_links = relationship("InvoiceTimeEntry", back_populates="invoice", cascade="all, delete-orphan")
     expenses = relationship("InvoiceExpense", back_populates="invoice", cascade="all, delete-orphan")
+    hours_on_hold = relationship("InvoiceHoursOnHold", back_populates="invoice", cascade="all, delete-orphan")

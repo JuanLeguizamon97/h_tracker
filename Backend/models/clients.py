@@ -1,5 +1,5 @@
 from config.database import Base
-from sqlalchemy import Column, String, Boolean, DateTime, Text
+from sqlalchemy import Column, String, Boolean, DateTime, Text, Numeric, Date, BigInteger
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
@@ -38,6 +38,24 @@ class Client(Base):
     payment_terms = Column(String, nullable=True)
     team_member = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    # New fields
+    industry = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    tax_id = Column(String, nullable=True)
+    referral_source = Column(String, nullable=True)
+    referred_by = Column(String, nullable=True)
+    acquisition_date = Column(Date, nullable=True)
+    contract_start_date = Column(Date, nullable=True)
+    contract_end_date = Column(Date, nullable=True)
+    billing_rate = Column(Numeric(10, 2), nullable=True)
+    billing_currency = Column(String, nullable=True)
+    billing_email = Column(String, nullable=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    # FreshSales CRM integration
+    freshsales_id = Column(BigInteger, nullable=True, unique=True)
+    crm_synced_at = Column(DateTime, nullable=True)
+    crm_created_at = Column(DateTime, nullable=True)
+    crm_updated_at = Column(DateTime, nullable=True)
+    crm_source = Column(String(50), nullable=True, default='freshsales')
 
     projects = relationship("Project", back_populates="client")

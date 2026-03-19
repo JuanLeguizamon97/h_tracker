@@ -26,15 +26,48 @@ from models.projects import Project
 from models.clients import Client
 from models.employees import Employee
 from models.user_roles import UserRole
+from models.invoice_time_entries import InvoiceTimeEntry
+from services.invoice_hours_on_hold import upsert_on_hold_entry, delete_on_hold_entry
+from sqlalchemy import func
 from dateutil.relativedelta import relativedelta
 import uuid
 
 invoice_router = APIRouter(prefix="/invoices", tags=["invoices"])
 
 
+@invoice_router.get("/signatories")
+def list_signatories(company: Optional[str] = None):
+    """Return signatories for a given company (IPC or PI). Defaults to IPC."""
+    from services.invoice_config import COMPANY_SIGNATORIES
+    key = company if company in COMPANY_SIGNATORIES else "IPC"
+    return COMPANY_SIGNATORIES[key]
+
+
+@invoice_router.get("/preview-number")
+def preview_invoice_number(company: str = "IPC", db: Session = Depends(get_db)):
+    """Preview next invoice number for a company without incrementing the counter."""
+    from services.invoice_number_service import preview_next_number
+    return preview_next_number(db, company)
+
+
 @invoice_router.post("/", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
 def create_new_invoice(invoice_in: InvoiceCreate, db: Session = Depends(get_db)):
-    return create_invoice(db, invoice_in)
+    invoice = create_invoice(db, invoice_in)
+    # Notify project manager
+    project = db.query(Project).filter(Project.id == invoice.project_id).first()
+    if project and project.manager_id:
+        from services.notifications import notify_invoice_generated
+        notify_invoice_generated(
+            db,
+            invoice_id=invoice.id,
+            invoice_number=invoice.invoice_number or invoice.id[:8],
+            project_name=project.name,
+            manager_id=project.manager_id,
+            total=float(invoice.total or 0),
+        )
+        db.commit()
+        db.refresh(invoice)
+    return invoice
 
 
 @invoice_router.get("/", response_model=List[InvoiceOut])
@@ -54,26 +87,21 @@ def check_hours(
     db: Session = Depends(get_db),
 ):
     """Check if a project has unlinked billable time entries for the period."""
-    if not period_start or not period_end:
-        today = date_type.today()
-        end = today.replace(day=1) - relativedelta(days=1)
-        start = end.replace(day=1)
-    else:
-        start = datetime.strptime(period_start, "%Y-%m-%d").date()
-        end = datetime.strptime(period_end, "%Y-%m-%d").date()
-
     linked_ids_result = db.execute(
         sql_text("SELECT time_entry_id FROM invoice_time_entries")
     ).fetchall()
     linked_ids = {row[0] for row in linked_ids_result}
 
-    entries = db.query(TimeEntry).filter(
+    q = db.query(TimeEntry).filter(
         TimeEntry.project_id == project_id,
         TimeEntry.billable == True,
         TimeEntry.status == 'normal',
-        TimeEntry.date >= start,
-        TimeEntry.date <= end,
-    ).all()
+    )
+    if period_start and period_end:
+        start = datetime.strptime(period_start, "%Y-%m-%d").date()
+        end = datetime.strptime(period_end, "%Y-%m-%d").date()
+        q = q.filter(TimeEntry.date >= start, TimeEntry.date <= end)
+    entries = q.all()
     available = [e for e in entries if e.id not in linked_ids]
 
     total_hours = sum(float(e.hours) for e in available)
@@ -127,10 +155,10 @@ def get_scheduler_status(db: Session = Depends(get_db)):
         }
 
     today = date_type.today()
-    if today.day <= 5:
-        next_run = today.replace(day=5)
+    if today.day <= 3:
+        next_run = today.replace(day=3)
     else:
-        next_run = (today.replace(day=1) + relativedelta(months=1)).replace(day=5)
+        next_run = (today.replace(day=1) + relativedelta(months=1)).replace(day=3)
 
     return {
         "last_run": last_log.run_at.isoformat() if last_log.run_at else None,
@@ -150,6 +178,17 @@ def _build_edit_data(invoice_id: str, db: Session) -> dict:
     lines_out = []
     for line in invoice.lines:
         user_role = db.query(UserRole).filter(UserRole.user_id == line.user_id).first()
+        # Compute original hours from linked time entries for this employee
+        if line.user_id:
+            original_hours = db.query(func.coalesce(func.sum(TimeEntry.hours), 0)).join(
+                InvoiceTimeEntry, InvoiceTimeEntry.time_entry_id == TimeEntry.id
+            ).filter(
+                InvoiceTimeEntry.invoice_id == invoice.id,
+                TimeEntry.user_id == line.user_id,
+            ).scalar()
+            original_hours = float(original_hours or line.hours)
+        else:
+            original_hours = float(line.hours)
         lines_out.append({
             "id": line.id,
             "user_id": line.user_id,
@@ -161,6 +200,7 @@ def _build_edit_data(invoice_id: str, db: Session) -> dict:
             "discount_type": line.discount_type,
             "discount_value": float(line.discount_value) if line.discount_value is not None else 0.0,
             "amount": float(line.amount),
+            "original_hours": original_hours,
         })
 
     expenses_out = [
@@ -192,11 +232,28 @@ def _build_edit_data(invoice_id: str, db: Session) -> dict:
             "invoice_number": invoice.invoice_number,
             "issue_date": invoice.issue_date,
             "due_date": invoice.due_date,
+            "period_start": invoice.period_start,
+            "period_end": invoice.period_end,
+            "signatory_name": invoice.signatory_name,
+            "signatory_title": invoice.signatory_title,
+            "owner_company": invoice.owner_company or "IPC",
             "created_at": invoice.created_at,
             "updated_at": invoice.updated_at,
         },
-        "client": {"id": client.id, "name": client.name, "email": client.email, "phone": client.phone} if client else None,
-        "project": {"id": project.id, "name": project.name, "client_id": project.client_id} if project else None,
+        "client": {
+            "id": client.id,
+            "name": client.name,
+            "email": client.email,
+            "phone": client.phone,
+            "manager_name": client.manager_name,
+            "job_title": client.job_title,
+            "street_address_1": client.street_address_1,
+            "street_address_2": client.street_address_2,
+            "city": client.city,
+            "state": client.state,
+            "zip": client.zip,
+        } if client else None,
+        "project": {"id": project.id, "name": project.name, "client_id": project.client_id, "owner_company": project.owner_company or "IPC"} if project else None,
         "lines": lines_out,
         "expenses": expenses_out,
     }
@@ -235,7 +292,10 @@ def patch_invoice(invoice_id: str, patch_in: InvoicePatch, db: Session = Depends
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
     # Update simple invoice fields
-    simple_fields = ["status", "cap_amount", "invoice_number", "issue_date", "due_date", "notes"]
+    simple_fields = [
+        "status", "cap_amount", "issue_date", "due_date",
+        "period_start", "period_end", "notes", "signatory_name", "signatory_title", "owner_company",
+    ]
     for field in simple_fields:
         value = getattr(patch_in, field)
         if value is not None:
@@ -304,6 +364,23 @@ def patch_invoice(invoice_id: str, patch_in: InvoicePatch, db: Session = Depends
                         value = getattr(exp_patch, field)
                         if value is not None:
                             setattr(exp, field, value)
+
+    # Handle on-hold entries (upsert / delete per line)
+    if patch_in.on_hold_entries:
+        for entry in patch_in.on_hold_entries:
+            if entry.has_on_hold and entry.original_hours > entry.billed_hours:
+                upsert_on_hold_entry(
+                    db,
+                    invoice_id=invoice_id,
+                    line_id=entry.line_id,
+                    employee_name=entry.employee_name,
+                    original_hours=entry.original_hours,
+                    billed_hours=entry.billed_hours,
+                    rate=entry.rate,
+                    reason=entry.reason,
+                )
+            else:
+                delete_on_hold_entry(db, invoice_id=invoice_id, line_id=entry.line_id)
 
     db.commit()
     db.refresh(invoice)

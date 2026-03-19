@@ -11,7 +11,7 @@ class InvoiceLine(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     invoice_id = Column(String, ForeignKey("invoices.id"), nullable=False)
-    user_id = Column(String, ForeignKey("employees.id"), nullable=False)
+    user_id = Column(String, nullable=True)  # nullable — no FK, allows manual lines without an employee
     employee_name = Column(String, nullable=False)
     role_name = Column(String, nullable=True)
     hours = Column(Numeric(10, 2), nullable=False)
@@ -22,4 +22,3 @@ class InvoiceLine(Base):
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     invoice = relationship("Invoice", back_populates="lines")
-    employee = relationship("Employee")

@@ -24,6 +24,10 @@ from routers.invoice_fee_attachments import invoice_fee_attachments_router
 from routers.invoice_time_entries import invoice_time_entries_router
 from routers.invoice_expenses import invoice_expenses_router
 from routers.expensify import expensify_router
+from routers.freshsales import freshsales_router
+from routers.skill_catalog import skill_catalog_router
+from routers.notifications import notifications_router
+from routers.invoice_hours_on_hold import on_hold_router
 
 # Import all models so Base.metadata sees them
 import models  # noqa - imports all models via __init__.py
@@ -99,6 +103,10 @@ app.include_router(invoice_fee_attachments_router, dependencies=auth_deps)
 app.include_router(invoice_time_entries_router, dependencies=auth_deps)
 app.include_router(invoice_expenses_router, dependencies=auth_deps)
 app.include_router(expensify_router, dependencies=auth_deps)
+app.include_router(freshsales_router, dependencies=auth_deps)
+app.include_router(skill_catalog_router, dependencies=auth_deps)
+app.include_router(notifications_router, dependencies=auth_deps)
+app.include_router(on_hold_router, dependencies=auth_deps)
 
 
 # ---------- Health check ----------

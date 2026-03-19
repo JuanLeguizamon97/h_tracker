@@ -6,7 +6,7 @@ from datetime import datetime
 
 class InvoiceLineBase(BaseModel):
     invoice_id: str
-    user_id: str
+    user_id: Optional[str] = None
     employee_name: str
     role_name: Optional[str] = None
     hours: float

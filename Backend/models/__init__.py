@@ -15,3 +15,10 @@ from models.invoice_time_entries import InvoiceTimeEntry
 from models.invoice_expenses import InvoiceExpense
 from models.project_categories import ProjectCategory
 from models.scheduler_log import SchedulerLog
+from models.skill_catalog import SkillCatalog
+from models.employee_skills import EmployeeSkill
+from models.notifications import Notification
+from models.invoice_hours_on_hold import InvoiceHoursOnHold
+from models.employee_internal_cost import EmployeeInternalCost
+from models.project_required_skill import ProjectRequiredSkill
+from models.invoice_number_sequence import InvoiceNumberSequence

@@ -4,11 +4,15 @@ from sqlalchemy.orm import Session
 
 from models.invoice import Invoice
 from schemas.invoice import InvoiceCreate, InvoiceUpdate
+from services.invoice_number_service import atomic_generate_number
 
 
 def create_invoice(db: Session, invoice_in: InvoiceCreate) -> Invoice:
     data = invoice_in.model_dump(exclude_unset=True)
     invoice = Invoice(**data)
+    # Auto-generate invoice number — never user-supplied
+    company = data.get('owner_company', 'IPC')
+    invoice.invoice_number = atomic_generate_number(db, company)
     db.add(invoice)
     db.commit()
     db.refresh(invoice)

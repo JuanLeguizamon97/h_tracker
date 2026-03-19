@@ -1,329 +1,579 @@
-"""PDF invoice export using reportlab."""
+"""
+PDF invoice generator using xhtml2pdf (HTML → PDF).
+
+Produces a 2-page PDF:
+  Page 1 — Cover letter with logo, client address, body text, and signature.
+  Page 2 — Invoice detail: period, fees table, total-due box, ACH instructions.
+"""
+
+import base64
+import logging
+import os
+import re
 from io import BytesIO
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from xhtml2pdf import pisa
+
+from services.invoice_config import (
+    ASSETS_DIR, SIGNATURES_DIR, LOGOS_DIR, LOGO_FILE,
+    SIGNATURE_FILES, COMPANY_INFO, BANK_INFO, COMPANY_PROFILES,
 )
-from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
 
-# Brand colours
-BLUE = colors.HexColor("#1e3a5f")
-LIGHT_BLUE = colors.HexColor("#e8f0fe")
-GREY = colors.HexColor("#6b7280")
-LIGHT_GREY = colors.HexColor("#f9fafb")
-RED = colors.HexColor("#dc2626")
-BLACK = colors.black
-WHITE = colors.white
-
-EXPENSE_CATEGORIES = ["Airfare", "Hotel", "Parking / Transportation", "Meals", "Other"]
-
-styles = getSampleStyleSheet()
-
-def _style(name, **kw):
-    s = ParagraphStyle(name, parent=styles["Normal"], **kw)
-    return s
-
-H1 = _style("H1", fontSize=18, textColor=BLUE, fontName="Helvetica-Bold", spaceAfter=2)
-H2 = _style("H2", fontSize=11, textColor=BLUE, fontName="Helvetica-Bold", spaceAfter=4)
-BODY = _style("Body", fontSize=9, textColor=BLACK, leading=13)
-BODY_GREY = _style("BodyGrey", fontSize=9, textColor=GREY, leading=13)
-BODY_RIGHT = _style("BodyRight", fontSize=9, textColor=BLACK, leading=13, alignment=TA_RIGHT)
-LABEL = _style("Label", fontSize=7, textColor=GREY, fontName="Helvetica", leading=10)
-TOTAL = _style("Total", fontSize=12, textColor=BLUE, fontName="Helvetica-Bold", alignment=TA_RIGHT)
-SECTION = _style("Section", fontSize=8, textColor=GREY, fontName="Helvetica-Bold",
-                 spaceAfter=2, spaceBefore=8)
+logger = logging.getLogger(__name__)
 
 
-def _money(val: float) -> str:
-    return f"${val:,.2f}"
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _format_currency(value: float) -> str:
+    """Format as $1,234.56 — negative values as ($1,234.56)."""
+    if value < 0:
+        return f"(${abs(value):,.2f})"
+    return f"${value:,.2f}"
 
 
-def _fmt_date(d) -> str:
+def _format_date_long(d) -> str:
+    """Format as 'December 30, 2025' (no leading zero on day)."""
     if not d:
-        return "—"
+        return ""
     if isinstance(d, str):
-        return d
-    return d.strftime("%B %d, %Y")
+        try:
+            d = date.fromisoformat(d)
+        except ValueError:
+            return d
+    if isinstance(d, (date, datetime)):
+        # %-d removes leading zero on Linux; %#d on Windows — use lstrip
+        return d.strftime("%B {day}, %Y").replace("{day}", str(d.day))
+    return str(d)
 
 
-def _table_style(header_bg=BLUE, stripe=LIGHT_GREY):
-    return TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), header_bg),
-        ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 8),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, stripe]),
-        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 1), (-1, -1), 8),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, BLUE),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e5e7eb")),
-    ])
+def _sanitize_filename(name: str) -> str:
+    """Make a string safe for use in file/path names."""
+    return re.sub(r'[^\w\-]', '_', name).strip('_')
+
+
+def _get_image_base64(filepath: str) -> Optional[str]:
+    """Read an image file and return a base64 data-URI string, or None if missing."""
+    try:
+        if not os.path.isfile(filepath):
+            return None
+        with open(filepath, "rb") as f:
+            data = base64.b64encode(f.read()).decode("ascii")
+        ext = os.path.splitext(filepath)[1].lstrip(".").lower()
+        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/png")
+        return f"data:{mime};base64,{data}"
+    except Exception as exc:
+        logger.warning("Could not read image %s: %s", filepath, exc)
+        return None
+
+
+def _get_signature_base64(signatory_name: str) -> Optional[str]:
+    """Look up the signature file for a signatory and return base64 data-URI."""
+    filename = SIGNATURE_FILES.get(signatory_name)
+    if filename:
+        path = os.path.join(SIGNATURES_DIR, filename)
+        result = _get_image_base64(path)
+        if result:
+            return result
+    # Fallback
+    fallback = os.path.join(SIGNATURES_DIR, "signature_default.png")
+    return _get_image_base64(fallback)
+
+
+# ── HTML Template ─────────────────────────────────────────────────────────────
+
+_INVOICE_HTML_TEMPLATE = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page {{
+    size: letter;
+    margin: 0.75in;
+  }}
+  body {{
+    font-family: "Times New Roman", Times, serif;
+    font-size: 11pt;
+    color: #000000;
+    margin: 0;
+    padding: 0;
+  }}
+  .page-break {{
+    page-break-after: always;
+  }}
+
+  /* ── Header ── */
+  table.header-table {{
+    width: 100%;
+    border-collapse: collapse;
+  }}
+  .company-block {{
+    font-size: 10pt;
+    line-height: 1.5;
+  }}
+  .company-name {{
+    font-size: 12pt;
+    font-weight: bold;
+  }}
+  .logo-img {{
+    max-height: 60px;
+    margin-bottom: 4pt;
+    display: block;
+  }}
+
+  /* ── Invoice title / date ── */
+  .invoice-title {{
+    text-align: center;
+    font-size: 13pt;
+    font-weight: bold;
+    margin-top: 22pt;
+    margin-bottom: 4pt;
+  }}
+  .invoice-date-center {{
+    text-align: center;
+    font-size: 11pt;
+    margin-bottom: 22pt;
+  }}
+
+  /* ── Client block ── */
+  .client-block {{
+    margin-bottom: 18pt;
+    line-height: 1.7;
+    font-size: 11pt;
+  }}
+
+  /* ── Body text ── */
+  .body-text {{
+    margin-top: 10pt;
+    margin-bottom: 10pt;
+    line-height: 1.8;
+    font-size: 11pt;
+    text-align: justify;
+  }}
+
+  /* ── Signature section ── */
+  .signature-section {{
+    margin-top: 28pt;
+    font-size: 11pt;
+    line-height: 1.8;
+  }}
+  .signature-img {{
+    max-height: 55px;
+    display: block;
+    margin: 6pt 0 2pt 0;
+  }}
+
+  /* ── Period table ── */
+  table.period-table {{
+    border-collapse: collapse;
+    margin-bottom: 14pt;
+    font-size: 10pt;
+  }}
+  table.period-table th {{
+    background-color: #000000;
+    color: #ffffff;
+    padding: 4pt 12pt;
+    border: 1pt solid #000000;
+    text-align: left;
+    font-weight: bold;
+  }}
+  table.period-table td {{
+    border: 1pt solid #000000;
+    padding: 4pt 12pt;
+  }}
+
+  /* ── Fees table ── */
+  table.fees-table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+    margin-bottom: 6pt;
+  }}
+  table.fees-table th {{
+    background-color: #000000;
+    color: #ffffff;
+    border: 1pt solid #000000;
+    padding: 4pt 6pt;
+    text-align: left;
+    font-weight: bold;
+  }}
+  table.fees-table td {{
+    border: 1pt solid #cccccc;
+    padding: 4pt 6pt;
+  }}
+  table.fees-table tr.total-row td {{
+    border: 1pt solid #000000;
+    background-color: #f0f0f0;
+    font-weight: bold;
+  }}
+  .text-right {{
+    text-align: right;
+  }}
+
+  /* ── Total-due box ── */
+  .total-due-box {{
+    background-color: #FFFFCC;
+    border: 2pt solid #000000;
+    text-align: center;
+    font-weight: bold;
+    font-size: 13pt;
+    padding: 8pt 12pt;
+    margin-top: 12pt;
+    margin-bottom: 18pt;
+  }}
+
+  /* ── ACH section ── */
+  .ach-section {{
+    margin-top: 16pt;
+    font-size: 10pt;
+  }}
+  .ach-title {{
+    font-weight: bold;
+    font-size: 11pt;
+    margin-bottom: 6pt;
+  }}
+  table.ach-table {{
+    border-collapse: collapse;
+    font-size: 10pt;
+  }}
+  table.ach-table td {{
+    padding: 2pt 10pt 2pt 0;
+  }}
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- PAGE 1: COVER LETTER                                         -->
+<!-- ============================================================ -->
+<div class="page-break">
+
+  <!-- Header -->
+  <table class="header-table">
+    <tr>
+      <td>{logo_block}</td>
+      <td style="text-align:right; vertical-align:top;">&nbsp;</td>
+    </tr>
+  </table>
+
+  <!-- Invoice number + date (centered) -->
+  <div class="invoice-title">Invoice {invoice_number}</div>
+  <div class="invoice-date-center">{invoice_date}</div>
+
+  <!-- Client contact block -->
+  <div class="client-block">
+    {client_contact}<br/>
+    {client_title}<br/>
+    {client_company}<br/>
+    {client_address}<br/>
+    {client_city_state_zip}
+  </div>
+
+  <!-- Opening salutation -->
+  <p class="body-text">Dear {client_contact},</p>
+
+  <!-- Body -->
+  <p class="body-text">
+    Attached, please find our invoice for services rendered during the period
+    from <b>{period_from}</b> through <b>{period_to}</b>.
+  </p>
+
+  <p class="body-text">
+    If you have any questions, please do not hesitate to contact us.
+  </p>
+
+  <!-- Signature -->
+  <div class="signature-section">
+    <p>Sincerely,</p>
+    {signature_block}
+    <p><b>{signatory_name}</b><br/>{signatory_title}</p>
+  </div>
+
+</div><!-- end page 1 -->
+
+
+<!-- ============================================================ -->
+<!-- PAGE 2: INVOICE DETAIL                                       -->
+<!-- ============================================================ -->
+<div>
+
+  <!-- Header (same as page 1) -->
+  <table class="header-table">
+    <tr>
+      <td>{logo_block}</td>
+      <td style="text-align:right; vertical-align:top;">&nbsp;</td>
+    </tr>
+  </table>
+
+  <!-- Invoice number + date -->
+  <div class="invoice-title">Invoice {invoice_number}</div>
+  <div class="invoice-date-center">{invoice_date}</div>
+
+  <!-- Client block -->
+  <div class="client-block">
+    {client_contact}<br/>
+    {client_title}<br/>
+    {client_company}<br/>
+    {client_address}<br/>
+    {client_city_state_zip}
+  </div>
+
+  <!-- Period table -->
+  <table class="period-table">
+    <tr>
+      <th>Period From</th>
+      <th>Period To</th>
+    </tr>
+    <tr>
+      <td>{period_from}</td>
+      <td>{period_to}</td>
+    </tr>
+  </table>
+
+  <!-- Fees table -->
+  <table class="fees-table">
+    <colgroup>
+      <col style="width:32%;"/>
+      <col style="width:14%;"/>
+      <col style="width:10%;"/>
+      <col style="width:14%;"/>
+      <col style="width:14%;"/>
+      <col style="width:16%;"/>
+    </colgroup>
+    <tr>
+      <th>Fees</th>
+      <th class="text-right">Hourly Rate</th>
+      <th class="text-right">Hours</th>
+      <th class="text-right">Subtotal</th>
+      <th class="text-right">Discount</th>
+      <th class="text-right">Total</th>
+    </tr>
+    {professional_rows}
+    <tr class="total-row">
+      <td colspan="3">Total Fees Due</td>
+      <td class="text-right">{total_fees}</td>
+      <td class="text-right">{total_discount}</td>
+      <td class="text-right">{total_due_fees}</td>
+    </tr>
+  </table>
+
+  <!-- Total due box -->
+  <div class="total-due-box">
+    TOTAL DUE UPON RECEIPT: {total_due}
+  </div>
+
+  <!-- ACH Instructions -->
+  <div class="ach-section">
+    <div class="ach-title">ACH Instructions:</div>
+    <table class="ach-table">
+      <tr>
+        <td><b>Bank:</b></td>
+        <td>{bank_name}</td>
+      </tr>
+      <tr>
+        <td><b>ABA:</b></td>
+        <td>{bank_aba}</td>
+      </tr>
+      <tr>
+        <td><b>Account Name:</b></td>
+        <td>{bank_account_name}</td>
+      </tr>
+      <tr>
+        <td><b>Account Number:</b></td>
+        <td>{bank_account_number}</td>
+      </tr>
+    </table>
+  </div>
+
+</div><!-- end page 2 -->
+
+</body>
+</html>
+"""
+
+
+# ── Template data builder ─────────────────────────────────────────────────────
+
+def _build_professional_rows(lines: list) -> tuple[str, float, float, float]:
+    """
+    Build HTML <tr> rows for the fees table.
+    Returns (html_rows, total_subtotal, total_discount_dollars, total_after_discount).
+    """
+    rows_html = []
+    total_subtotal = 0.0
+    total_discount = 0.0
+    total_net = 0.0
+
+    for line in lines:
+        hours = float(line.get("hours", 0) or 0)
+        rate = float(line.get("hourly_rate", 0) or line.get("rate_snapshot", 0) or 0)
+        subtotal = hours * rate
+
+        disc_type = line.get("discount_type") or "amount"
+        disc_val = float(line.get("discount_value", 0) or 0)
+        disc_dollars = (subtotal * disc_val / 100) if disc_type == "percent" else disc_val
+        net = max(0.0, subtotal - disc_dollars)
+
+        total_subtotal += subtotal
+        total_discount += disc_dollars
+        total_net += net
+
+        name = line.get("employee_name") or line.get("person_name") or "—"
+        role = line.get("title") or line.get("role_name") or ""
+        name_cell = f"{name}" + (f"<br/><small style='color:#555'>{role}</small>" if role else "")
+
+        disc_label = _format_currency(disc_dollars) if disc_dollars > 0 else "—"
+
+        rows_html.append(
+            f"<tr>"
+            f"<td>{name_cell}</td>"
+            f"<td class='text-right'>{_format_currency(rate)}</td>"
+            f"<td class='text-right'>{hours:.2f}</td>"
+            f"<td class='text-right'>{_format_currency(subtotal)}</td>"
+            f"<td class='text-right'>{disc_label}</td>"
+            f"<td class='text-right'><b>{_format_currency(net)}</b></td>"
+            f"</tr>"
+        )
+
+    return "".join(rows_html), total_subtotal, total_discount, total_net
+
+
+def generate_invoice_html(edit_data: dict) -> str:
+    """Fill the HTML template with invoice data and return the complete HTML string."""
+    invoice = edit_data.get("invoice", {})
+    client = edit_data.get("client") or {}
+    lines = edit_data.get("lines", [])
+    expenses = edit_data.get("expenses", [])
+
+    # ── Invoice fields ────────────────────────────────────────────────────────
+    invoice_number = invoice.get("invoice_number") or invoice.get("id", "")[:8]
+    invoice_date = _format_date_long(invoice.get("issue_date"))
+    period_from = _format_date_long(invoice.get("period_start")) or invoice_date
+    period_to = _format_date_long(invoice.get("period_end")) or _format_date_long(invoice.get("due_date")) or invoice_date
+
+    signatory_name = invoice.get("signatory_name") or ""
+    signatory_title = invoice.get("signatory_title") or ""
+
+    # ── Client fields ─────────────────────────────────────────────────────────
+    client_company = client.get("name") or "—"
+    client_contact = client.get("manager_name") or client.get("name") or "—"
+    client_title = client.get("job_title") or client.get("manager_title") or ""
+
+    addr1 = client.get("street_address_1") or ""
+    addr2 = client.get("street_address_2") or ""
+    client_address = ", ".join(part for part in [addr1, addr2] if part) or client.get("address") or ""
+    city = client.get("city") or ""
+    state = client.get("state") or ""
+    zip_ = client.get("zip") or ""
+    client_city_state_zip = ", ".join(part for part in [city, state] if part)
+    if zip_:
+        client_city_state_zip = f"{client_city_state_zip} {zip_}".strip(", ")
+
+    # ── Company profile ───────────────────────────────────────────────────────
+    owner_company = invoice.get("owner_company") or "IPC"
+    profile = COMPANY_PROFILES.get(owner_company, COMPANY_PROFILES["IPC"])
+    bank = profile["bank"]
+
+    # ── Logo ──────────────────────────────────────────────────────────────────
+    logo_file = profile.get("logo_file") or LOGO_FILE
+    logo_uri = _get_image_base64(logo_file)
+    if logo_uri is None and owner_company != "IPC":
+        logger.warning("⚠️ %s not found in assets/logos/ — using text fallback", logo_file)
+    if logo_uri:
+        logo_block = (
+            f'<img src="{logo_uri}" class="logo-img" alt="Logo"/>'
+            f'<div class="company-block">'
+            f'<span class="company-name">{profile["name"]}</span><br/>'
+            f'{profile["address"]}<br/>'
+            f'{profile["city_state_zip"]}<br/>'
+            f'{profile["phone"]}'
+            f'</div>'
+        )
+    else:
+        logo_block = (
+            f'<div class="company-block">'
+            f'<span class="company-name">{profile["name"]}</span><br/>'
+            f'{profile["address"]}<br/>'
+            f'{profile["city_state_zip"]}<br/>'
+            f'{profile["phone"]}'
+            f'</div>'
+        )
+
+    # ── Signature ─────────────────────────────────────────────────────────────
+    sig_uri = _get_signature_base64(signatory_name) if signatory_name else None
+    if sig_uri:
+        signature_block = f'<img src="{sig_uri}" class="signature-img" alt="Signature"/>'
+    else:
+        signature_block = ""
+
+    # ── Fee rows ──────────────────────────────────────────────────────────────
+    all_lines = list(lines)
+    # Also include manual lines if present
+    for ml in edit_data.get("manual_lines", []):
+        all_lines.append({
+            "employee_name": ml.get("person_name") or ml.get("employee_name") or "—",
+            "title": ml.get("description") or "",
+            "hours": ml.get("hours") or 0,
+            "hourly_rate": ml.get("rate_usd") or ml.get("rate_snapshot") or 0,
+            "discount_value": 0,
+        })
+
+    professional_rows, total_fees, total_discount, total_net = _build_professional_rows(all_lines)
+    if not professional_rows:
+        professional_rows = "<tr><td colspan='6' style='text-align:center;color:#999'>No line items</td></tr>"
+
+    # Total including expenses
+    total_expenses = sum(float(e.get("amount_usd", 0) or 0) for e in expenses)
+    cap = invoice.get("cap_amount")
+    capped_fees = min(total_net, float(cap)) if cap is not None else total_net
+    total_due_val = capped_fees + total_expenses
+
+    return _INVOICE_HTML_TEMPLATE.format(
+        # Header / logo
+        logo_block=logo_block,
+        # Invoice meta
+        invoice_number=invoice_number,
+        invoice_date=invoice_date or "—",
+        period_from=period_from or "—",
+        period_to=period_to or "—",
+        # Client
+        client_company=client_company,
+        client_contact=client_contact,
+        client_title=client_title,
+        client_address=client_address,
+        client_city_state_zip=client_city_state_zip,
+        # Signature
+        signature_block=signature_block,
+        signatory_name=signatory_name or "—",
+        signatory_title=signatory_title or "—",
+        # Fees
+        professional_rows=professional_rows,
+        total_fees=_format_currency(total_fees + total_discount),
+        total_discount=_format_currency(total_discount),
+        total_due_fees=_format_currency(total_net),
+        total_due=_format_currency(total_due_val),
+        # ACH
+        bank_name=bank["bank_name"],
+        bank_aba=bank["aba"],
+        bank_account_name=bank["account_name"],
+        bank_account_number=bank["account_number"],
+    )
+
+
+def html_to_pdf(html_content: str) -> bytes:
+    """Convert an HTML string to PDF bytes using xhtml2pdf."""
+    buf = BytesIO()
+    result = pisa.CreatePDF(html_content, dest=buf, encoding="UTF-8")
+    if result.err:
+        raise RuntimeError(f"xhtml2pdf error code {result.err}")
+    return buf.getvalue()
 
 
 def generate_invoice_pdf(edit_data: dict) -> bytes:
     """
-    Generate a PDF for an invoice given the edit-data dict (from InvoiceEditDataOut).
-    Returns raw PDF bytes.
+    Entry point called by the router.
+    Accepts the edit_data dict from _build_edit_data() and returns PDF bytes.
     """
-    buf = BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=letter,
-        leftMargin=0.65 * inch,
-        rightMargin=0.65 * inch,
-        topMargin=0.75 * inch,
-        bottomMargin=0.75 * inch,
-    )
-
-    invoice = edit_data.get("invoice", {})
-    client = edit_data.get("client") or {}
-    project = edit_data.get("project") or {}
-    lines = edit_data.get("lines", [])
-    expenses = edit_data.get("expenses", [])
-
-    inv_number = invoice.get("invoice_number") or invoice.get("id", "")[:8]
-    inv_label = f"INV-{inv_number}" if inv_number else "INVOICE"
-    status = (invoice.get("status") or "draft").upper()
-    issue_date = _fmt_date(invoice.get("issue_date"))
-    due_date = _fmt_date(invoice.get("due_date"))
-    cap_amount: Optional[float] = invoice.get("cap_amount")
-    notes = invoice.get("notes") or ""
-
-    client_name = client.get("name") or "—"
-    client_email = client.get("email") or ""
-    client_phone = client.get("phone") or ""
-    project_name = project.get("name") or "—"
-
-    story = []
-
-    # ── Header ──────────────────────────────────────────────────────────────
-    header_data = [
-        [
-            Paragraph("<b>Impact Point Co., LLC</b>", _style("Co", fontSize=14, textColor=BLUE,
-                                                              fontName="Helvetica-Bold")),
-            Paragraph(inv_label, _style("InvLabel", fontSize=20, textColor=BLUE,
-                                        fontName="Helvetica-Bold", alignment=TA_RIGHT)),
-        ]
-    ]
-    header_table = Table(header_data, colWidths=["55%", "45%"])
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    story.append(header_table)
-    story.append(Spacer(1, 4))
-    story.append(HRFlowable(width="100%", thickness=2, color=BLUE))
-    story.append(Spacer(1, 8))
-
-    # ── Invoice meta + client side by side ─────────────────────────────────
-    meta_left = [
-        [Paragraph("BILL TO", LABEL)],
-        [Paragraph(f"<b>{client_name}</b>", BODY)],
-    ]
-    if client_email:
-        meta_left.append([Paragraph(client_email, BODY_GREY)])
-    if client_phone:
-        meta_left.append([Paragraph(client_phone, BODY_GREY)])
-    meta_left.append([Paragraph(f"Project: {project_name}", BODY_GREY)])
-
-    meta_right = [
-        [Paragraph("INVOICE DATE", LABEL), Paragraph(issue_date, BODY_RIGHT)],
-        [Paragraph("DUE DATE", LABEL), Paragraph(due_date, BODY_RIGHT)],
-        [Paragraph("STATUS", LABEL),
-         Paragraph(f"<b>{status}</b>",
-                   _style("St", fontSize=9, textColor=BLUE if status == "APPROVED" else GREY,
-                          fontName="Helvetica-Bold", alignment=TA_RIGHT))],
-    ]
-
-    left_tbl = Table(meta_left, colWidths=["100%"])
-    left_tbl.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
-
-    right_tbl = Table(meta_right, colWidths=["50%", "50%"])
-    right_tbl.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
-
-    meta_wrapper = Table([[left_tbl, right_tbl]], colWidths=["55%", "45%"])
-    meta_wrapper.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    story.append(meta_wrapper)
-    story.append(Spacer(1, 14))
-
-    # ── Professionals ───────────────────────────────────────────────────────
-    ROLE_SECTION_LABELS = {
-        "manager": "Hours Cost per Employee",
-        "contractor": "Professional Fees",
-        "employee": "Billable Hours",
-    }
-
-    # Group lines by role
-    groups: dict[str, list] = {}
-    for line in lines:
-        key = (line.get("role") or "employee").lower()
-        groups.setdefault(key, []).append(line)
-
-    total_fees = 0.0
-    total_discounts = 0.0
-
-    if groups:
-        story.append(Paragraph("PROFESSIONALS", SECTION))
-        for role_key, role_lines in groups.items():
-            section_label = ROLE_SECTION_LABELS.get(role_key, role_key.title())
-            story.append(Paragraph(f"<i>{section_label}</i>",
-                                   _style("RoleHdr", fontSize=8, textColor=GREY,
-                                          fontName="Helvetica-Oblique", spaceBefore=4, spaceAfter=2)))
-
-            rows = [["Professional", "Role", "Hours", "Rate", "Subtotal", "Discount", "Total"]]
-            for line in role_lines:
-                hours = float(line.get("hours", 0) or 0)
-                rate = float(line.get("hourly_rate", 0) or 0)
-                subtotal = hours * rate
-                disc_type = line.get("discount_type") or "amount"
-                disc_val = float(line.get("discount_value", 0) or 0)
-                disc_dollars = (subtotal * disc_val / 100) if disc_type == "percent" else disc_val
-                disc_hours = disc_dollars / rate if rate > 0 else 0
-                line_total = max(0, subtotal - disc_dollars)
-                total_fees += line_total
-                total_discounts += disc_dollars
-
-                disc_label = f"{disc_hours:.2f}h / {_money(disc_dollars)}" if disc_dollars > 0 else "—"
-                rows.append([
-                    Paragraph(f"<b>{line.get('employee_name', '')}</b><br/>"
-                              f"<font size='7' color='grey'>{line.get('title', '')}</font>",
-                              BODY),
-                    (line.get("role") or "").capitalize(),
-                    f"{hours:.1f}",
-                    _money(rate),
-                    _money(subtotal),
-                    Paragraph(disc_label,
-                              _style("DiscLabel", fontSize=8, textColor=GREY, alignment=TA_RIGHT)),
-                    Paragraph(f"<b>{_money(line_total)}</b>", BODY_RIGHT),
-                ])
-
-            col_widths = [2.1 * inch, 0.9 * inch, 0.55 * inch, 0.7 * inch, 0.75 * inch, 1.1 * inch, 0.9 * inch]
-            tbl = Table(rows, colWidths=col_widths, repeatRows=1)
-            tbl.setStyle(_table_style())
-            # Right-align numeric cols
-            for col in [2, 3, 4, 6]:
-                tbl.setStyle(TableStyle([("ALIGN", (col, 0), (col, -1), "RIGHT")]))
-            story.append(tbl)
-            story.append(Spacer(1, 6))
-
-    # ── Expenses ─────────────────────────────────────────────────────────────
-    total_expenses = 0.0
-    if expenses:
-        story.append(Spacer(1, 6))
-        story.append(Paragraph("EXPENSES", SECTION))
-
-        exp_rows = [["Date", "Professional", "Vendor", "Description", "Category", "Amount"]]
-        for exp in expenses:
-            amount = float(exp.get("amount_usd", 0) or 0)
-            total_expenses += amount
-            exp_rows.append([
-                _fmt_date(exp.get("date")),
-                exp.get("professional") or "—",
-                exp.get("vendor") or "—",
-                Paragraph(exp.get("description") or "—", BODY),
-                exp.get("category") or "—",
-                Paragraph(_money(amount), BODY_RIGHT),
-            ])
-
-        # Category subtotals row
-        cat_totals: dict[str, float] = {}
-        for exp in expenses:
-            cat = exp.get("category") or "Other"
-            cat_totals[cat] = cat_totals.get(cat, 0) + float(exp.get("amount_usd", 0) or 0)
-        cat_label = "  |  ".join(
-            f"{c}: {_money(v)}" for c, v in cat_totals.items() if v > 0
-        )
-
-        exp_col_widths = [0.7*inch, 1.1*inch, 1.1*inch, 2.0*inch, 1.0*inch, 0.9*inch]
-        exp_tbl = Table(exp_rows, colWidths=exp_col_widths, repeatRows=1)
-        exp_tbl.setStyle(_table_style())
-        exp_tbl.setStyle(TableStyle([("ALIGN", (5, 0), (5, -1), "RIGHT")]))
-        story.append(exp_tbl)
-
-        if cat_label:
-            story.append(Spacer(1, 3))
-            story.append(Paragraph(cat_label, BODY_GREY))
-
-    # ── Totals ────────────────────────────────────────────────────────────────
-    story.append(Spacer(1, 14))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=BLUE))
-    story.append(Spacer(1, 8))
-
-    subtotal_fees = total_fees
-    if cap_amount is not None:
-        capped_fees = min(subtotal_fees, float(cap_amount))
-    else:
-        capped_fees = subtotal_fees
-    total_due = capped_fees + total_expenses
-
-    summary_rows = [
-        ["", "Total Fees:", _money(total_fees + total_discounts)],
-        ["", "Total Discounts:", f"-{_money(total_discounts)}"],
-    ]
-    if cap_amount is not None:
-        summary_rows.append(["", "Cap Amount:", _money(float(cap_amount))])
-    summary_rows.append(["", "Total Expenses:", _money(total_expenses)])
-    summary_rows.append(["", "", ""])  # spacer row
-    summary_rows.append(["", "TOTAL DUE:", _money(total_due)])
-
-    sum_tbl = Table(summary_rows, colWidths=["55%", "25%", "20%"])
-    sum_style = TableStyle([
-        ("ALIGN", (1, 0), (2, -1), "RIGHT"),
-        ("FONTNAME", (0, 0), (-1, -2), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -2), 9),
-        ("TEXTCOLOR", (1, 1), (2, 1), RED),  # discounts in red
-        ("LINEABOVE", (1, -1), (2, -1), 1, BLUE),
-        ("FONTNAME", (1, -1), (2, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (1, -1), (2, -1), 12),
-        ("TEXTCOLOR", (1, -1), (2, -1), BLUE),
-        ("TOPPADDING", (0, -1), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -2), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-    ])
-    sum_tbl.setStyle(sum_style)
-    story.append(sum_tbl)
-
-    # ── Notes ──────────────────────────────────────────────────────────────
-    if notes:
-        story.append(Spacer(1, 14))
-        story.append(Paragraph("NOTES", SECTION))
-        story.append(Paragraph(notes, BODY_GREY))
-
-    # ── Footer ─────────────────────────────────────────────────────────────
-    story.append(Spacer(1, 20))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d1d5db")))
-    story.append(Spacer(1, 4))
-    story.append(Paragraph(
-        "Impact Point Co., LLC  •  Generated by H_TRACKER",
-        _style("Footer", fontSize=7, textColor=GREY, alignment=TA_CENTER),
-    ))
-
-    doc.build(story)
-    return buf.getvalue()
+    html = generate_invoice_html(edit_data)
+    return html_to_pdf(html)

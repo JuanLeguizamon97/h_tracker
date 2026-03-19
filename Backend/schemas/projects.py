@@ -20,6 +20,11 @@ class ProjectBase(BaseModel):
     status: str = "active"
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    owner_company: str = "IPC"
+    billing_period: str = "monthly"
+    billing_day_of_period: Optional[int] = 3
+    custom_period_days: Optional[int] = None
+    billing_anchor_date: Optional[date] = None
 
 
 class ProjectCreate(ProjectBase):
@@ -42,6 +47,11 @@ class ProjectUpdate(BaseModel):
     status: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    owner_company: Optional[str] = None
+    billing_period: Optional[str] = None
+    billing_day_of_period: Optional[int] = None
+    custom_period_days: Optional[int] = None
+    billing_anchor_date: Optional[date] = None
 
 
 class ProjectOut(BaseModel):
@@ -65,6 +75,11 @@ class ProjectOut(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     created_at: datetime
+    owner_company: str = "IPC"
+    billing_period: str = "monthly"
+    billing_day_of_period: Optional[int] = 3
+    custom_period_days: Optional[int] = None
+    billing_anchor_date: Optional[date] = None
 
 
 class ProjectCategoryOut(BaseModel):

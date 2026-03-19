@@ -11,7 +11,7 @@ class InvoiceBase(BaseModel):
 
 
 class InvoiceCreate(InvoiceBase):
-    pass
+    owner_company: str = 'IPC'
 
 
 class InvoiceUpdate(BaseModel):
@@ -22,9 +22,13 @@ class InvoiceUpdate(BaseModel):
     discount: Optional[float] = None
     total: Optional[float] = None
     cap_amount: Optional[float] = None
-    invoice_number: Optional[str] = None
     issue_date: Optional[date] = None
     due_date: Optional[date] = None
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
+    signatory_name: Optional[str] = None
+    signatory_title: Optional[str] = None
+    owner_company: Optional[str] = None
 
 
 class InvoiceOut(BaseModel):
@@ -41,6 +45,11 @@ class InvoiceOut(BaseModel):
     invoice_number: Optional[str] = None
     issue_date: Optional[date] = None
     due_date: Optional[date] = None
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
+    signatory_name: Optional[str] = None
+    signatory_title: Optional[str] = None
+    owner_company: Optional[str] = 'IPC'
     created_at: datetime
     updated_at: datetime
 
@@ -52,12 +61,20 @@ class InvoiceEditClient(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
+    manager_name: Optional[str] = None
+    job_title: Optional[str] = None
+    street_address_1: Optional[str] = None
+    street_address_2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip: Optional[str] = None
 
 
 class InvoiceEditProject(BaseModel):
     id: str
     name: str
     client_id: str
+    owner_company: Optional[str] = 'IPC'
 
 
 class InvoiceEditLine(BaseModel):
@@ -71,6 +88,7 @@ class InvoiceEditLine(BaseModel):
     discount_type: Optional[str] = None
     discount_value: float = 0
     amount: float
+    original_hours: Optional[float] = None
 
 
 class InvoiceEditExpense(BaseModel):
@@ -118,12 +136,27 @@ class InvoiceExpensePatch(BaseModel):
     notes: Optional[str] = None
 
 
+class OnHoldEntryPatch(BaseModel):
+    line_id: str
+    employee_name: str
+    original_hours: float
+    billed_hours: float
+    rate: float
+    has_on_hold: bool  # True → upsert; False → delete
+    reason: Optional[str] = None
+
+
 class InvoicePatch(BaseModel):
     status: Optional[str] = None
     cap_amount: Optional[float] = None
-    invoice_number: Optional[str] = None
     issue_date: Optional[date] = None
     due_date: Optional[date] = None
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
     notes: Optional[str] = None
+    signatory_name: Optional[str] = None
+    signatory_title: Optional[str] = None
+    owner_company: Optional[str] = None
     lines: Optional[List[InvoiceLinePatch]] = None
     expenses: Optional[List[InvoiceExpensePatch]] = None
+    on_hold_entries: Optional[List[OnHoldEntryPatch]] = None
