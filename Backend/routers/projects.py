@@ -19,6 +19,20 @@ from models.skill_catalog import SkillCatalog
 from models.employee_skills import EmployeeSkill
 import uuid
 
+
+def _auto_assign_all_employees(db: Session, project_id: str) -> None:
+    """Assign all active employees to an internal project, skipping those already assigned."""
+    already = {ep.user_id for ep in db.query(EmployeeProject).filter(EmployeeProject.project_id == project_id).all()}
+    employees = db.query(Employee).filter(Employee.is_active == True).all()
+    for emp in employees:
+        if emp.id not in already:
+            db.add(EmployeeProject(
+                id=str(uuid.uuid4()),
+                user_id=emp.id,
+                project_id=project_id,
+            ))
+    db.commit()
+
 projects_router = APIRouter(prefix="/projects", tags=["projects"])
 
 # ── Role suggestion map ───────────────────────────────────────────────────────
@@ -76,6 +90,8 @@ def list_project_categories(
 @projects_router.post("/", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_new_project(project_in: ProjectCreate, db: Session = Depends(get_db)):
     project = create_project(db, project_in)
+    if project.is_internal:
+        _auto_assign_all_employees(db, project.id)
     return _with_manager_name(project, db)
 
 
@@ -310,6 +326,8 @@ def update_project_detail(project_id: str, project_in: ProjectUpdate, db: Sessio
     project = update_project(db, project_id, project_in)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.is_internal:
+        _auto_assign_all_employees(db, project_id)
     return _with_manager_name(project, db)
 
 
@@ -318,6 +336,8 @@ def patch_project_detail(project_id: str, project_in: ProjectUpdate, db: Session
     project = update_project(db, project_id, project_in)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.is_internal:
+        _auto_assign_all_employees(db, project_id)
     return _with_manager_name(project, db)
 
 

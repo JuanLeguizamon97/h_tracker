@@ -1,6 +1,10 @@
 core/.env
 core/.env.*
 
+# API keys — never commit
+azure.env
+.env
+
 
 
 # Byte-compiled / optimized / DLL files

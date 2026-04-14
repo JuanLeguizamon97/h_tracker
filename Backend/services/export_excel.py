@@ -366,3 +366,364 @@ def generate_invoice_xlsx(edit_data: dict) -> bytes:
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def generate_invoices_report_xlsx(invoices_data: list) -> bytes:
+    """
+    Generate a multi-invoice report .xlsx. Returns raw bytes.
+    invoices_data: list of dicts with keys invoice, client, project, lines, expenses.
+
+    Sheet layout:
+      1. Invoice_Detail  — full block per invoice (header + lines + expenses + totals)
+      2. Time_Detail     — flat table of all lines across all invoices
+      3. Expenses        — flat table of all expenses across all invoices
+    """
+    import datetime as dt
+
+    # ── shared styles ──────────────────────────────────────────────────────────
+    INV_TITLE_FILL = PatternFill("solid", fgColor="FF1e3a5f")   # dark blue
+    INV_TITLE_FONT = Font(name="Calibri", bold=True, size=11, color="FFFFFFFF")
+    META_FILL      = PatternFill("solid", fgColor="FFe8f0fe")    # light blue
+    META_FONT      = Font(name="Calibri", bold=True, size=9, color="FF1e3a5f")
+    META_VAL_FONT  = Font(name="Calibri", size=9, color="FF374151")
+    SEC_FILL       = PatternFill("solid", fgColor="FFf3f4f6")    # light grey for sub-headers
+    SEC_FONT       = Font(name="Calibri", bold=True, size=9, color="FF6b7280")
+    TOTAL_FILL     = PatternFill("solid", fgColor="FFdbeafe")    # pale blue for invoice total
+    GRAND_FILL     = PatternFill("solid", fgColor="FF1e3a5f")
+    GRAND_FONT     = Font(name="Calibri", bold=True, size=11, color="FFFFFFFF")
+
+    NCOLS = 10  # A–J
+
+    def _merge_title(ws, row, value, fill, font, height=18):
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=NCOLS)
+        c = ws.cell(row=row, column=1, value=value)
+        c.font = font
+        c.fill = fill
+        c.alignment = LEFT
+        c.border = _thin_border()
+        ws.row_dimensions[row].height = height
+        # apply fill+border to merged tail cells too
+        for col in range(2, NCOLS + 1):
+            tc = ws.cell(row=row, column=col)
+            tc.fill = fill
+            tc.border = _thin_border()
+
+    def _meta_pair(ws, row, pairs: list):
+        """Write alternating label/value pairs across the row (up to 5 pairs = 10 cols)."""
+        for idx, (label, val) in enumerate(pairs):
+            col = idx * 2 + 1
+            lc = ws.cell(row=row, column=col, value=label)
+            lc.font = META_FONT
+            lc.fill = META_FILL
+            lc.alignment = LEFT
+            lc.border = _thin_border()
+            vc = ws.cell(row=row, column=col + 1, value=val)
+            vc.font = META_VAL_FONT
+            vc.fill = META_FILL
+            vc.alignment = LEFT
+            vc.border = _thin_border()
+        # fill remaining columns
+        filled = len(pairs) * 2
+        for col in range(filled + 1, NCOLS + 1):
+            tc = ws.cell(row=row, column=col)
+            tc.fill = META_FILL
+            tc.border = _thin_border()
+
+    def _section_header(ws, row, headers: list, ncols_override=None):
+        n = ncols_override or NCOLS
+        for col, h in enumerate(headers, 1):
+            c = ws.cell(row=row, column=col, value=h)
+            c.font = SEC_FONT
+            c.fill = SEC_FILL
+            c.alignment = CENTER
+            c.border = _thin_border()
+        for col in range(len(headers) + 1, n + 1):
+            ws.cell(row=row, column=col).fill = SEC_FILL
+
+    def _blank_row(ws, row):
+        for col in range(1, NCOLS + 1):
+            ws.cell(row=row, column=col).value = None
+
+    def _subtotal_row(ws, row, label, value, label_col=1, value_col=10):
+        for col in range(1, NCOLS + 1):
+            c = ws.cell(row=row, column=col)
+            c.fill = TOTAL_FILL
+            c.border = _thin_border()
+        lc = ws.cell(row=row, column=label_col, value=label)
+        lc.font = LABEL_FONT
+        lc.fill = TOTAL_FILL
+        vc = ws.cell(row=row, column=value_col, value=_money(value))
+        vc.font = TOTAL_FONT
+        vc.number_format = MONEY_FMT
+        vc.alignment = RIGHT
+        vc.fill = TOTAL_FILL
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    # ═══════════════════════ Sheet 1: Invoice_Detail ══════════════════════════
+    ws = wb.create_sheet("Invoice_Detail")
+    ws.sheet_view.showGridLines = False
+
+    # Report title
+    today_str = dt.date.today().strftime("%B %d, %Y")
+    _merge_title(ws, 1, f"INVOICES REPORT  ·  Impact Point Co., LLC  ·  {today_str}",
+                 INV_TITLE_FILL, INV_TITLE_FONT, height=24)
+
+    cur_row = 3  # start after title + blank
+
+    grand_fees = 0.0
+    grand_exp  = 0.0
+    grand_tot  = 0.0
+
+    for data in invoices_data:
+        inv     = data.get("invoice", {})
+        client  = data.get("client") or {}
+        project = data.get("project") or {}
+        lines   = data.get("lines", [])
+        expenses = data.get("expenses", [])
+
+        inv_num  = inv.get("invoice_number") or inv.get("id", "")[:8]
+        company  = inv.get("owner_company") or "IPC"
+        status   = (inv.get("status") or "draft").upper()
+        proj_name = project.get("name", "—")
+        cli_name  = client.get("name", "—")
+
+        # ── Invoice title bar ─────────────────────────────────────────────
+        _merge_title(ws, cur_row,
+                     f"  #{inv_num}   {proj_name}   |   {cli_name}   [{company}]",
+                     INV_TITLE_FILL, INV_TITLE_FONT, height=20)
+        cur_row += 1
+
+        # ── Meta row 1: status, period, issue, due ────────────────────────
+        _meta_pair(ws, cur_row, [
+            ("Status",       status),
+            ("Period",       f"{inv.get('period_start') or '—'}  →  {inv.get('period_end') or '—'}"),
+            ("Issue Date",   str(inv.get("issue_date") or "—")),
+            ("Due Date",     str(inv.get("due_date") or "—")),
+            ("Cap Amount",   f"${_money(inv.get('cap_amount', 0)):,.2f}" if inv.get("cap_amount") else "—"),
+        ])
+        cur_row += 1
+
+        # ── Meta row 2: client contact, notes ─────────────────────────────
+        notes_val = (inv.get("notes") or "")[:60] or "—"
+        _meta_pair(ws, cur_row, [
+            ("Client Email",   client.get("email") or "—"),
+            ("Client Phone",   client.get("phone") or "—"),
+            ("Signatory",      inv.get("signatory_name") or "—"),
+            ("Notes",          notes_val),
+        ])
+        cur_row += 1
+
+        # ── Lines sub-table ───────────────────────────────────────────────
+        _section_header(ws, cur_row,
+                        ["Employee", "Title", "Hours", "Rate (USD)",
+                         "Subtotal", "Disc. Type", "Disc. Value", "Disc. ($)", "Net Total", ""])
+        cur_row += 1
+
+        lines_net = 0.0
+        for line in lines:
+            hours     = _money(line.get("hours", 0))
+            rate      = _money(line.get("hourly_rate", 0))
+            subtotal  = hours * rate
+            disc_type = line.get("discount_type") or "amount"
+            disc_val  = _money(line.get("discount_value", 0))
+            disc_dol  = (subtotal * disc_val / 100) if disc_type == "percent" else disc_val
+            net       = max(0.0, subtotal - disc_dol)
+            lines_net += net
+            stripe = cur_row % 2 == 0
+            fill   = STRIPE_FILL if stripe else PatternFill("solid", fgColor=WHITE)
+            vals   = [
+                line.get("employee_name", ""),
+                line.get("title", ""),
+                hours, rate, subtotal,
+                disc_type, disc_val, disc_dol, net, "",
+            ]
+            for col_idx, val in enumerate(vals, 1):
+                c = ws.cell(row=cur_row, column=col_idx, value=val)
+                c.font  = BODY_FONT
+                c.fill  = fill
+                c.border = _thin_border()
+                c.alignment = RIGHT if isinstance(val, float) else LEFT
+                if isinstance(val, float):
+                    c.number_format = MONEY_FMT
+            cur_row += 1
+
+        # Lines subtotal
+        _subtotal_row(ws, cur_row, "Lines Net Total", lines_net)
+        cur_row += 1
+        grand_fees += lines_net
+
+        # ── Expenses sub-table (only if present) ──────────────────────────
+        exp_total = 0.0
+        if expenses:
+            _blank_row(ws, cur_row)
+            cur_row += 1
+            _section_header(ws, cur_row,
+                            ["Date", "Professional", "Vendor", "Description",
+                             "Category", "Amount (USD)", "Payment Source", "Receipt", "Notes", ""])
+            cur_row += 1
+            for exp in expenses:
+                amount = _money(exp.get("amount_usd", 0))
+                exp_total += amount
+                stripe = cur_row % 2 == 0
+                fill   = STRIPE_FILL if stripe else PatternFill("solid", fgColor=WHITE)
+                vals   = [
+                    str(exp.get("date") or ""),
+                    exp.get("professional") or "",
+                    exp.get("vendor") or "",
+                    exp.get("description") or "",
+                    exp.get("category") or "",
+                    amount,
+                    exp.get("payment_source") or "",
+                    "Yes" if exp.get("receipt_attached") else "No",
+                    exp.get("notes") or "",
+                    "",
+                ]
+                for col_idx, val in enumerate(vals, 1):
+                    c = ws.cell(row=cur_row, column=col_idx, value=val)
+                    c.font   = BODY_FONT
+                    c.fill   = fill
+                    c.border = _thin_border()
+                    c.alignment = RIGHT if isinstance(val, float) else LEFT
+                    if isinstance(val, float):
+                        c.number_format = MONEY_FMT
+                cur_row += 1
+            _subtotal_row(ws, cur_row, "Expenses Total", exp_total)
+            cur_row += 1
+            grand_exp += exp_total
+
+        # ── Invoice grand total ────────────────────────────────────────────
+        inv_total = _money(inv.get("total", 0)) + exp_total
+        grand_tot += inv_total
+        for col in range(1, NCOLS + 1):
+            c = ws.cell(row=cur_row, column=col)
+            c.fill   = INV_TITLE_FILL
+            c.border = _thin_border()
+        lc = ws.cell(row=cur_row, column=1, value=f"INVOICE TOTAL  #{inv_num}")
+        lc.font = INV_TITLE_FONT
+        lc.fill = INV_TITLE_FILL
+        vc = ws.cell(row=cur_row, column=NCOLS, value=_money(inv_total))
+        vc.font = INV_TITLE_FONT
+        vc.number_format = MONEY_FMT
+        vc.alignment = RIGHT
+        vc.fill = INV_TITLE_FILL
+        cur_row += 1
+
+        # ── Spacer between invoices ────────────────────────────────────────
+        _blank_row(ws, cur_row)
+        cur_row += 1
+        _blank_row(ws, cur_row)
+        cur_row += 1
+
+    # ── Grand total row ────────────────────────────────────────────────────
+    for col in range(1, NCOLS + 1):
+        c = ws.cell(row=cur_row, column=col)
+        c.fill   = GRAND_FILL
+        c.border = _thin_border()
+    ws.row_dimensions[cur_row].height = 20
+    lc = ws.cell(row=cur_row, column=1,
+                 value=f"GRAND TOTAL  ({len(invoices_data)} invoices)")
+    lc.font = GRAND_FONT
+    lc.fill = GRAND_FILL
+    for col, label, val in [
+        (6, "Fees",     grand_fees),
+        (8, "Expenses", grand_exp),
+        (10, "TOTAL",   grand_tot),
+    ]:
+        hc = ws.cell(row=cur_row, column=col - 1, value=label)
+        hc.font = Font(name="Calibri", bold=True, size=9, color="FFbfdbfe")
+        hc.fill = GRAND_FILL
+        hc.alignment = RIGHT
+        vc = ws.cell(row=cur_row, column=col, value=_money(val))
+        vc.font = GRAND_FONT
+        vc.fill = GRAND_FILL
+        vc.number_format = MONEY_FMT
+        vc.alignment = RIGHT
+
+    _set_col_widths(ws, {
+        "A": 22, "B": 22, "C": 9, "D": 11,
+        "E": 11, "F": 11, "G": 11, "H": 11,
+        "I": 11, "J": 11,
+    })
+    ws.freeze_panes = "A2"
+
+    # ═══════════════════════ Sheet 2: Time_Detail ═════════════════════════════
+    ws_time = wb.create_sheet("Time_Detail")
+    ws_time.sheet_view.showGridLines = False
+
+    headers_time = [
+        "Invoice #", "Company", "Project", "Employee", "Title",
+        "Hours", "Rate (USD)", "Subtotal", "Disc. Type", "Disc. Value",
+        "Disc. ($)", "Total",
+    ]
+    _header_row(ws_time, 1, headers_time)
+
+    row = 2
+    for data in invoices_data:
+        inv     = data.get("invoice", {})
+        project = data.get("project") or {}
+        inv_num = inv.get("invoice_number") or inv.get("id", "")[:8]
+        company = inv.get("owner_company") or "IPC"
+        for line in data.get("lines", []):
+            hours     = _money(line.get("hours", 0))
+            rate      = _money(line.get("hourly_rate", 0))
+            subtotal  = hours * rate
+            disc_type = line.get("discount_type") or "amount"
+            disc_val  = _money(line.get("discount_value", 0))
+            disc_dol  = (subtotal * disc_val / 100) if disc_type == "percent" else disc_val
+            net       = max(0.0, subtotal - disc_dol)
+            _data_row(ws_time, row, [
+                f"#{inv_num}", company, project.get("name", ""),
+                line.get("employee_name", ""), line.get("title", ""),
+                hours, rate, subtotal, disc_type, disc_val, disc_dol, net,
+            ], stripe=row % 2 == 0)
+            row += 1
+
+    _set_col_widths(ws_time, {
+        "A": 14, "B": 8, "C": 24, "D": 22, "E": 20,
+        "F": 8,  "G": 11, "H": 11, "I": 10, "J": 10,
+        "K": 11, "L": 11,
+    })
+
+    # ═══════════════════════ Sheet 3: Expenses ════════════════════════════════
+    ws_exp = wb.create_sheet("Expenses")
+    ws_exp.sheet_view.showGridLines = False
+
+    headers_exp = [
+        "Invoice #", "Company", "Project", "Date", "Professional",
+        "Vendor", "Description", "Category", "Amount (USD)",
+        "Payment Source", "Receipt", "Notes",
+    ]
+    _header_row(ws_exp, 1, headers_exp)
+
+    row = 2
+    for data in invoices_data:
+        inv     = data.get("invoice", {})
+        project = data.get("project") or {}
+        inv_num = inv.get("invoice_number") or inv.get("id", "")[:8]
+        company = inv.get("owner_company") or "IPC"
+        for exp in data.get("expenses", []):
+            _data_row(ws_exp, row, [
+                f"#{inv_num}", company, project.get("name", ""),
+                str(exp.get("date") or ""),
+                exp.get("professional") or "",
+                exp.get("vendor") or "",
+                exp.get("description") or "",
+                exp.get("category") or "",
+                _money(exp.get("amount_usd", 0)),
+                exp.get("payment_source") or "",
+                "Yes" if exp.get("receipt_attached") else "No",
+                exp.get("notes") or "",
+            ], stripe=row % 2 == 0)
+            row += 1
+
+    _set_col_widths(ws_exp, {
+        "A": 14, "B": 8, "C": 22, "D": 12, "E": 18,
+        "F": 18, "G": 26, "H": 18, "I": 13,
+        "J": 16, "K": 10, "L": 22,
+    })
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

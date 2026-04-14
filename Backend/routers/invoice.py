@@ -9,7 +9,7 @@ from config.database import get_db
 from services.invoice import create_invoice, get_invoices, get_invoice, update_invoice, delete_invoice
 from services.invoice_expenses import create_expense, get_expenses, get_expense, update_expense, delete_expense
 from services.export_pdf import generate_invoice_pdf
-from services.export_excel import generate_invoice_xlsx
+from services.export_excel import generate_invoice_xlsx, generate_invoices_report_xlsx
 from services.invoice_generator import generate_invoices_for_period
 from schemas.invoice import (
     InvoiceCreate, InvoiceUpdate, InvoiceOut,
@@ -259,6 +259,27 @@ def _build_edit_data(invoice_id: str, db: Session) -> dict:
     }
 
 
+@invoice_router.get("/export/report")
+def export_invoices_report(
+    status: Optional[str] = None,
+    company: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Export all invoices (optionally filtered) as a multi-sheet XLSX report."""
+    invoices = get_invoices(db, project_id=None, status=status)
+    if company:
+        invoices = [inv for inv in invoices if (inv.owner_company or "IPC") == company]
+    invoices_data = [_build_edit_data(inv.id, db) for inv in invoices]
+    xlsx_bytes = generate_invoices_report_xlsx(invoices_data)
+    import datetime as dt
+    filename = f"Invoices_Report_{dt.date.today()}.xlsx"
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @invoice_router.get("/{invoice_id}/edit-data", response_model=InvoiceEditDataOut)
 def get_invoice_edit_data(invoice_id: str, db: Session = Depends(get_db)):
     invoice = get_invoice(db, invoice_id)
@@ -291,6 +312,9 @@ def patch_invoice(invoice_id: str, patch_in: InvoicePatch, db: Session = Depends
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
+    # Capture current company before any updates
+    current_company = invoice.owner_company or "IPC"
+
     # Update simple invoice fields
     simple_fields = [
         "status", "cap_amount", "issue_date", "due_date",
@@ -300,6 +324,12 @@ def patch_invoice(invoice_id: str, patch_in: InvoicePatch, db: Session = Depends
         value = getattr(patch_in, field)
         if value is not None:
             setattr(invoice, field, value)
+
+    # If company changed, assign a new invoice number for the new company
+    new_company = patch_in.owner_company
+    if new_company and new_company != current_company:
+        from services.invoice_number_service import atomic_generate_number
+        invoice.invoice_number = atomic_generate_number(db, new_company)
 
     # Update lines
     if patch_in.lines:

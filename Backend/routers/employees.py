@@ -19,8 +19,25 @@ from schemas.skills import EmployeeSkillCreate, EmployeeSkillUpdate, EmployeeSki
 from schemas.employee_internal_cost import EmployeeInternalCostCreate, EmployeeInternalCostOut
 from models.employees import Employee
 from models.user_roles import UserRole
+from models.projects import Project
+from models.employee_projects import EmployeeProject
+import uuid
 
 AUTH_MODE = os.getenv("AUTH_MODE", "azure")
+
+
+def _auto_assign_internal_projects(db: Session, employee_id: str) -> None:
+    """Assign all active internal projects to a new employee, skipping any already assigned."""
+    already = {ep.project_id for ep in db.query(EmployeeProject).filter(EmployeeProject.user_id == employee_id).all()}
+    internal_projects = db.query(Project).filter(Project.is_internal == True, Project.is_active == True).all()
+    for proj in internal_projects:
+        if proj.id not in already:
+            db.add(EmployeeProject(
+                id=str(uuid.uuid4()),
+                user_id=employee_id,
+                project_id=proj.id,
+            ))
+    db.commit()
 
 employees_router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -64,7 +81,9 @@ async def get_current_employee(request: Request, db: Session = Depends(get_db)):
         user = await azure_scheme(request)
         email = user.claims.get("preferred_username") or user.claims.get("email", "")
         name = user.claims.get("name", email.split("@")[0])
-    return get_or_create_employee_by_email(db, email=email, name=name)
+    emp = get_or_create_employee_by_email(db, email=email, name=name)
+    _auto_assign_internal_projects(db, emp.id)
+    return emp
 
 
 # ── Admin-only CRUD ───────────────────────────────────────────────────────────
@@ -76,7 +95,9 @@ async def get_current_employee(request: Request, db: Session = Depends(get_db)):
     dependencies=[Depends(require_admin)],
 )
 def create_new_employee(employee_in: EmployeeCreate, db: Session = Depends(get_db)):
-    return create_employee(db, employee_in)
+    emp = create_employee(db, employee_in)
+    _auto_assign_internal_projects(db, emp.id)
+    return emp
 
 
 @employees_router.get(
